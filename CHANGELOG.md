@@ -28,6 +28,24 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`reserved-words` knowledge topic.** `get_knowledge(topic="reserved keywords")`
+  used to answer with the `switch` topic. The new topic lists the compiler's own
+  keyword set (`XPP_KEYWORDS`, generated at build time, so a recapture updates
+  it), grouped by kind, with the `in` exemption, the `@` escape, the positions the
+  compiler rejects and where the language reference differs from the compiler.
+
+### Changed
+- **`validate_code` KW001 checks every declaration position, not one line shape.**
+  It only matched `<primitive type> <name>;` at the start of a line. A probe class
+  showed the compiler also rejecting a reserved word as a parameter, a `for` loop
+  variable, a class/table/EDT/`var`-typed variable, the variable of `using`/`catch`
+  and a later name of a declaration list (`int a, count;`) — all passed
+  `validate_code`. Still silent, each confirmed by compiling: `in`, `@index`,
+  `boolean boolean;` and a method named `count()`. The fix message names the
+  position. The `args-object` topic's example declared `MyOrderTable order;`,
+  which does not compile; it is renamed.
+
 ## [1.21.0] — 2026-10-15
 
 ### Added

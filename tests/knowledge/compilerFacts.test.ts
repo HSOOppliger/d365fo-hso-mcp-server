@@ -30,7 +30,7 @@ import {
   isUnknownFunction,
   runtimeFunctionInfo,
 } from '../../src/knowledge/compilerFacts.js';
-import { runRules } from '../../src/tools/analysis/validateXpp.js';
+import { KW001_RESERVED_TYPE_WORDS, runRules } from '../../src/tools/analysis/validateXpp.js';
 import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -319,6 +319,69 @@ describe('the rules added from compiler diagnostics fire on the bad shape', () =
     // `in` is reserved but exempted — legal as an identifier.
     expect(has('    int in;', 'KW001')).toBe(false);
     expect(has('    int counter;', 'KW001')).toBe(false);
+  });
+
+  // Every position below was compiled in a probe class (xppc rejects each one)
+  // and passed validate_code before KW001 was widened.
+  it('KW001 — class, table and EDT types, var and every name of a list', () => {
+    expect(has('    CustTable group;', 'KW001')).toBe(true);
+    expect(has('    Query order;', 'KW001')).toBe(true);
+    expect(has('    var index = 1;', 'KW001')).toBe(true);
+    expect(has('    int a, count;', 'KW001')).toBe(true);
+    expect(has('    int a = max(b, c), count = 2;', 'KW001')).toBe(true);
+    expect(has('    System.Exception index;', 'KW001')).toBe(true);
+    expect(has('    CustTable custTable;', 'KW001')).toBe(false);
+    expect(has('    int a, b;', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — parameters, loop variables and using/catch variables', () => {
+    expect(has('    void foo(int index)\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    void foo(CustTable _t, str 20 select = "")\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    for (int count = 0; count < 5; count++)\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    using (var index = new MyDisposable())\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    catch (System.Exception index)\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    void foo(CustAccount _a, boolean _forUpdate = false)\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    for (i = 0; i < 5; i++)\n    {\n    }', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — names the position in the fix', () => {
+    const fix = (code: string) => rulesOf(code).find(v => v.rule === 'KW001')?.fix ?? '';
+    expect(fix('    void foo(int index)\n    {\n    }')).toMatch(/cannot name a parameter/);
+    expect(fix('    for (int count = 0; count < 5; count++)\n    {\n    }')).toMatch(/cannot name a loop variable/);
+    expect(fix('    CustTable group;')).toMatch(/cannot name a variable/);
+  });
+
+  it('KW001 — stays silent on what the compiler accepts', () => {
+    // Probed: these compile. `boolean` is a type name but not in the set.
+    expect(has('    boolean boolean;', 'KW001')).toBe(false);
+    expect(has('    int @index;', 'KW001')).toBe(false);
+    expect(has('    void foo(int @index)\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    void foo(int in)\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    for (int in = 0; in < 5; in++)\n    {\n    }', 'KW001')).toBe(false);
+    // A method named after a keyword compiles; method names are not declarators.
+    expect(has('    public int count()\n    {\n        return 1;\n    }', 'KW001')).toBe(false);
+    expect(has('    next count();', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — a reserved type token is not a declaration, and select clauses are not either', () => {
+    expect(has('    return x;', 'KW001')).toBe(false);
+    expect(has('    else x = 1;', 'KW001')).toBe(false);
+    expect(has('    select firstonly t order by t.Name desc;', 'KW001')).toBe(false);
+    expect(has('    while select t\n        order by\n            t.Name desc\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    select sum(Qty) from t group by ItemId;', 'KW001')).toBe(false);
+    // A select expression in parentheses: the middle sort key is not a parameter.
+    expect(has(
+      '    return (select firstonly MyId from myTable\n' +
+      '                order by MyDate desc, CreatedDateTime desc, MyId desc\n' +
+      '                where myTable.MyRef == this.MyRef).MyId;',
+      'KW001',
+    )).toBe(false);
+    expect(has('    container c = [a, count];', 'KW001')).toBe(false);
+    expect(has('    [a, b] = con;', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — every reserved type word is in the compiler set', () => {
+    for (const w of KW001_RESERVED_TYPE_WORDS) expect(XPP_KEYWORDS, w).toContain(w);
   });
 
   it('CS001 — C# shapes, but not the .NET generics the platform ships', () => {

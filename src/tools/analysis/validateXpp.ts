@@ -47,7 +47,7 @@
  *   ATTR001 an attribute argument that is not a compile-time literal
  *   ATTR002 [SysObsolete] without message, isError AND date (xppbp moniker)
  *   EXT001  an extension-method class whose class or methods are not static
- *   KW001   a variable named after a reserved word
+ *   KW001   a variable or parameter named after a reserved word
  *
  * Keyword scans run against a comment/string-masked copy of the source
  * (maskStringsAndComments) to avoid false positives inside literals/comments.
@@ -2391,35 +2391,139 @@ function checkExtensionMethodClassShape(code: string): ValidationViolation[] {
 }
 
 /**
- * KW001 — a variable named after a reserved word.
+ * The reserved words that are also type names, so they may open a declaration.
+ * Every other reserved word in front of a name means the text is not one:
+ * `return x;` and `else x = 1;` are statements.
+ */
+export const KW001_RESERVED_TYPE_WORDS: readonly string[] = [
+  'anytype', 'container', 'date', 'guid', 'int', 'int64', 'real', 'str', 'utcdatetime', 'var',
+];
+const RESERVED_TYPE_WORDS = new Set(KW001_RESERVED_TYPE_WORDS);
+
+/**
+ * One declarator, matched against a whole piece of masked source:
+ * `[modifiers] Type [length] [<generic>] name [array] [= … | , …]`.
+ * Groups: 1 everything before the name, 2 the type, 3 the name, 4 the tail.
+ */
+const DECLARATOR_RE =
+  /^(\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?:\s+\d+)?(?:\s*<[^<>;{}()]*>)?\s+)(@?[A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)?([=,][\s\S]*)?$/;
+
+/** A later name of a declaration list: `count` or `count = 1`. */
+const LIST_NAME_RE = /^(\s*)(@?[A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)?(?:=[\s\S]*)?$/;
+
+function isDeclarationType(type: string): boolean {
+  if (type.includes('.')) return true;
+  return !isReservedKeyword(type) || RESERVED_TYPE_WORDS.has(type.toLowerCase());
+}
+
+/** Split at the commas that sit outside every (), [] and {}. Offsets are kept. */
+function splitTopLevelCommas(text: string): { text: string; offset: number }[] {
+  const parts: { text: string; offset: number }[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push({ text: text.slice(start, i), offset: start });
+      start = i + 1;
+    }
+  }
+  parts.push({ text: text.slice(start), offset: start });
+  return parts;
+}
+
+/**
+ * KW001 — a variable or parameter named after a reserved word.
  *
  * The reserved set is the parser's own (115 words, read from the shipped compiler),
  * and it is not the set the language reference lists: `having`, `foreach`, `async`,
  * `await` and `namespace` are reserved without being implemented, so a variable
  * called `having` fails with a syntax error that names the following token instead.
- * `in` is reserved but exempted and stays legal.
+ *
+ * The positions are the ones a probe class showed the compiler rejecting: a local
+ * or member variable of any type (primitive, class, table, enum, EDT, `var`), every
+ * name of a declaration list, a method parameter, a `for` loop variable and the
+ * variable of a `using` or `catch`. Each message differs ("invalid name for a
+ * parameter", "Invalid token 'count'", "'identifier' expected"), and most do not
+ * name the word.
+ *
+ * Deliberately silent, each confirmed by compiling: `in` (reserved but exempted),
+ * `@index` (the `@` prefix makes a keyword an identifier), `boolean boolean;`
+ * (`boolean` is not in the set) and a METHOD named `count()` — a name followed by
+ * `(` is never a declarator here.
  */
 function checkReservedIdentifiers(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
   const lines = code.split('\n');
   const violations: ValidationViolation[] = [];
-  const declRe =
-    /^\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*(str\s+\d+|str|int64|int|real|boolean|date|utcdatetime|timeOfDay|guid|container|anytype)\s+([A-Za-z_]\w*)\s*[;,=]/gim;
-  let m: RegExpExecArray | null;
-  while ((m = declRe.exec(masked)) !== null) {
-    if (!isReservedKeyword(m[2])) continue;
-    const lineNo = lineNumber(masked, m.index);
+  const seen = new Set<number>();
+
+  const report = (name: string, offset: number, position: string) => {
+    if (name.startsWith('@') || !isReservedKeyword(name) || seen.has(offset)) return;
+    seen.add(offset);
+    const lineNo = lineNumber(masked, offset);
     violations.push({
       rule: 'KW001',
       severity: 'error',
       line: lineNo,
-      excerpt: lines[lineNo - 1]?.trim() ?? m[0].trim(),
-      fix: `"${m[2]}" is a reserved word in X++ (the parser's own keyword set) and cannot name a ` +
-        'variable. Rename it — the compiler reports the failure on the token that follows, not on ' +
-        'the name, so the message will not point here.',
+      excerpt: lines[lineNo - 1]?.trim() ?? name,
+      fix: `"${name}" is a reserved word in X++ (the parser's own keyword set) and cannot name a ` +
+        `${position}. Rename it — the compiler reports the failure on the token that follows, or ` +
+        'as "Invalid token" / "\'identifier\' expected", so the message will not point here.',
     });
+  };
+
+  // A declaration statement: the first name, then every later name of the list.
+  const checkStatement = (text: string, base: number, position: string) => {
+    const m = DECLARATOR_RE.exec(text);
+    if (!m || !isDeclarationType(m[2])) return;
+    report(m[3], base + m[1].length, position);
+    const tail = m[4];
+    if (!tail) return;
+    const tailBase = base + text.length - tail.length;
+    for (const part of splitTopLevelCommas(tail).slice(1)) {
+      const n = LIST_NAME_RE.exec(part.text);
+      if (n) report(n[2], tailBase + part.offset + n[1].length, position);
+    }
+  };
+
+  // Statements and member declarations: the pieces between ; { and }. Leading
+  // preprocessor lines and attribute blocks belong to no declarator.
+  const pieceRe = /[^;{}]+/g;
+  let p: RegExpExecArray | null;
+  while ((p = pieceRe.exec(masked)) !== null) {
+    const lead = /^(?:\s+|#[^\n]*|\[[^\]]*\])*/.exec(p[0])![0].length;
+    checkStatement(p[0].slice(lead), p.index + lead, 'variable');
   }
-  return violations;
+
+  // Parenthesised lists: parameters, a `for` header, the variable of using/catch.
+  const stack: number[] = [];
+  for (let i = 0; i < masked.length; i++) {
+    if (masked[i] === '(') { stack.push(i); continue; }
+    if (masked[i] !== ')' || stack.length === 0) continue;
+    const open = stack.pop()!;
+    const inner = masked.slice(open + 1, i);
+    const keyword = /(\w+)\s*$/.exec(masked.slice(Math.max(0, open - 40), open))?.[1].toLowerCase();
+    if (keyword === 'for') {
+      const init = inner.split(';')[0];
+      checkStatement(init, open + 1, 'loop variable');
+      continue;
+    }
+    // A select used as an expression is not a parameter list: split at its commas,
+    // `order by A desc, B desc, C desc` has a middle segment shaped like `B desc`
+    // (the full sweep found it twice, SalesLine and SalesTable.lastPackingSlip).
+    if (/[;{}]/.test(inner) || /^\s*select\b/i.test(inner)) continue;
+    const position = keyword === 'using' || keyword === 'catch' ? 'variable' : 'parameter';
+    for (const part of splitTopLevelCommas(inner)) {
+      const m = DECLARATOR_RE.exec(part.text);
+      if (!m || !isDeclarationType(m[2]) || m[4]?.startsWith(',')) continue;
+      report(m[3], open + 1 + part.offset + m[1].length, position);
+    }
+  }
+
+  return violations.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
 }
 
 /**
