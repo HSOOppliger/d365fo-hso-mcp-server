@@ -1,6 +1,6 @@
 # feat(find-references): answer from DYNAMICSXREFDB in write-only mode
 
-*Draft upstream pull request for dynamics365ninja/d365fo-mcp-server, not filed yet. Branch `feat/find-references-write-only`, commit 10d786d1 on upstream `main` 5122a30b. On `d365dev` the same change is tag `v1.22.0-d365dev.3` (`.2` plus the "0 on the owner itself" headline). The text below is the PR description to file.*
+*Upstream pull request [#1184](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1184) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/find-references-write-only` (commit 10d786d1 on upstream `main` 5122a30b). On `d365dev` the same change is tag `v1.22.0-d365dev.3` (`.2` plus the "0 on the owner itself" headline). The text below is the PR description as filed.*
 
 ## The deployment this is for
 
@@ -72,7 +72,7 @@ To keep one, hide the other: uncheck it in the VS Code / Visual Studio tool pick
   - `CustTable.validateWrite`, untyped: 7 callers from the bridge.
   - `CustAccount` with `targetType: "edt"`: 3,039 references.
   - Bare `validateWrite` with `targetType: "method"`: the pointer, with no bridge query.
-  - A method added by a custom `[ExtensionOf]` class, as `Owner.method`: 0; its explicit `/Classes/<Ext>/Methods/<m>` path returned 12 callers. That run had the earlier wording (a warning below `Total References Found: 0`), which is why the headline changed.
+  - A method added by a custom `[ExtensionOf]` class, as `Owner.method`: 0; its explicit `/Classes/<Ext>/Methods/<m>` path returned 12 callers. That run had the earlier wording (a warning below `Total References Found: 0`), which is why the headline changed. Re-run on the final commit: the answer reads "0 on the owner itself", says methods added by `[ExtensionOf]` classes were not searched, and names the explicit path.
   - With a non-existent database name configured, the companion pointed to the shared server and named `D365FO_XREF_DB_NAME`.
   - With a `permissions.deny` rule on the shared server's tool, only the companion's `find_references` remained.
   - UDE not tested.
