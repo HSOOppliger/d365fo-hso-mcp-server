@@ -1,6 +1,6 @@
 # feat(naming): extension name formats — `{0}.CTSO`, `CTSO_{0}Dbt_Extension`
 
-*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/extension-name-formats` (cherry-picked onto upstream `main`). On `d365dev` the same change is tag `v1.22.0-d365dev.4`. Not filed yet. The text below is the PR description.*
+*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/extension-name-formats` (cherry-picked onto upstream `main`). On `d365dev` the same change is tag `v1.22.0-d365dev.4`. Not filed yet; manual VM test passed. The text below is the PR description.*
 
 ## The convention this is for
 
@@ -23,6 +23,15 @@ Some teams have a naming convention fixed by contract or by a customer's standar
   - A full class name is normalised back to the style: `CTSO_InventTableDbt_Extension` → `CTSO_InventTableDbtCtso_Extension` under `prefix`.
 - **`prefixSource=as-given` (#1134)** lets the agent write these names, with the convention stated in the instruction file. The server then neither generates nor checks them. `generate_object` scaffolds carry no token, `validate_object_naming` checks the structure only, and a name the agent gets wrong (`CTSO_InventTableCls_Extension` for a table) is written.
 - **#1027** asked for a per-type token and was declined for the *default* naming, with good evidence: the shipped metadata does not use it. This PR does not change the defaults or the styles. It adds an opt-in for teams whose convention is not the platform's, so the server can apply and enforce that convention instead of only describing it.
+
+## Why this belongs in the server
+
+- **It finishes what #1134 started.** `as-given` already accepts that some teams have conventions the styles can't express. But it hands the convention to the agent, and the agent can't apply it reliably. Picking `Dbt` or `Frm` depends on the base *type*, and a name like `InventTable` doesn't say which one is meant. The server already knows the type: create parses `[ExtensionOf(tableStr|formStr|classStr(…))]`, and the `generate_object` pattern says it. With a format, the server applies the convention and rejects a wrong name before it is written. Under `as-given`, a wrong name only shows up in code review.
+- **Nothing changes unless it is configured.** All five settings are empty by default, and an empty setting gives exactly the 1.22.0 name. A test pins this for each of the five styles and each of four ways of leaving the formats unset. Existing tests are unchanged and pass.
+- **The change is small and self-contained.** It adds one env-only module (`src/utils/extensionNameFormat.ts`, no imports) and one resolver that every naming path calls. There is no DB schema, parser or bridge change. The published tool schemas get *smaller* (45,096 → 45,076 chars) even though `validate_object_naming` gains one optional parameter.
+- **It doesn't guess.** In a case no format covers, the tool asks for the name (`ask`, the default) instead of making one up. A format that can't produce valid AOT names is rejected on every write, never silently ignored.
+- **Same names in every deployment.** The resolver never reads the index. The write-only companion (empty index) and a shared server (full index) therefore produce the same name, which a test checks.
+- **Tested on a dev VM.** Table, form and class extensions (of a class, a table and a form) were created under formats, along with the ask-back and `class-format` cases, `validate_object_naming` passes and rejections, and `get_workspace_info`. Every result matched the expected name.
 
 ## Change
 
@@ -91,7 +100,7 @@ Both instances name extensions: the companion writes (`d365fo_file`), and the sh
   - the template's intrinsic; the ask-back with no write; the explicit second call; `class-format`; element extensions; `as-given`.
 - `tests/utils/toolSchemaBudget.test.ts`: `validate_object_naming` publishes `baseObjectType` and pays for it in its own schema. Payload 45,096 → 45,076 chars.
 - `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (526 test files passed, 2 skipped; 7,615 tests passed, 30 skipped).
-- On a D365FO VM: not yet run (steps prepared).
+- On a D365FO dev VM (sandbox model, formats `{0}.CTSO`, `CTSO_{0}Cls`, `CTSO_{0}Dbt`, `CTSO_{0}Frm`), all expected names: `d365fo_file` create of a table extension and a form extension (`InventTable.CTSO`), class extensions of a class, a table and a form (`CTSO_SalesFormLetterCls_Extension`, `CTSO_InventTableDbt_Extension`, `CTSO_InventTableFrm_Extension`); a form data source extension class with `ask` (refused with the ask-back, created on the second call with an explicit name) and with `class-format` (`CTSO_InventTableCls_Extension`); `validate_object_naming` accept and reject; `get_workspace_info`.
 
 ## Checklist
 
@@ -99,5 +108,6 @@ Both instances name extensions: the companion writes (`d365fo_file`), and the sh
 - [x] Settings registered in `src/config/settings.ts`; `docs/CONFIGURATION.md` regenerated.
 - [x] CHANGELOG `[Unreleased]`, `docs/CUSTOM_EXTENSIONS.md` (§ Extension name formats), `docs/ARCHITECTURE.md`, `docs/MCP_CONFIG.md`, `docs/MCP_TOOLS.md`, op-specs (`class-extension` create properties, generate_object `className`).
 - [x] No DB schema, parser or bridge change.
+- [x] Manual test on a D365FO dev VM.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
