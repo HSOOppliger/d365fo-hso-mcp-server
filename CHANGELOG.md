@@ -34,6 +34,21 @@ those are called out explicitly below.
   set (`XPP_KEYWORDS`, read when the module loads, so a recapture updates it),
   grouped by kind, with the `in` exemption, the `@` escape, the positions the
   compiler rejects and where the language reference differs from the compiler.
+- **`find_references` in write-only mode: the hybrid companion answers from
+  `DYNAMICSXREFDB`.** In the hybrid deployment the shared read-only server has the
+  symbol index but no C# bridge, so its `find_references` can only search X++ code by
+  name; the local write-only companion has the bridge and the developer's
+  cross-reference database, but did not publish the tool. It now does (it joins
+  `ALWAYS_TOOLS`). There it answers from the bridge only: a typed name is scoped to
+  its container, an untyped name or `Owner.member` goes to the bridge, which expands
+  it across containers itself, and labels and AOT paths are passed as given. Where
+  full mode would run the name-based scan, the companion has nothing to scan (its
+  index is an empty stub), so it says so and points to the shared server's
+  `find_references` instead: a bare method name without its owner, no rows for a bare
+  name, no bridge, no cross-reference database, or a failed query. A zero for
+  `Owner.method` warns that methods added by `[ExtensionOf]` classes are not found
+  without the index. Full and read-only modes are unchanged. Clients that see both
+  servers' `find_references` can hide one in their tool picker.
 
 ### Fixed
 - **KW001 missed the later names of a declaration list and sized-string
