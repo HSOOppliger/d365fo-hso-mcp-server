@@ -1,6 +1,6 @@
 # feat(naming): extension name formats — `{0}.CTSO`, `CTSO_{0}Dbt_Extension`
 
-*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/extension-name-formats` (cherry-picked onto upstream `main`). On `d365dev` the same change is tag `v1.22.0-d365dev.4`. Not filed yet; manual VM test passed. The text below is the PR description.*
+*Upstream pull request [#1185](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1185) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/extension-name-formats` (commit 5b873dd9 on upstream `main` 5122a30b). On `d365dev` the same change is tag `v1.22.0-d365dev.4`. The text below is the PR description as filed.*
 
 ## The convention this is for
 
