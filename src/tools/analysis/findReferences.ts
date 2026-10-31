@@ -188,6 +188,33 @@ function buildScopedEmptyResult(displayName: string, bridgeTargets: string[]): {
 }
 
 /**
+ * buildScopedEmptyResult's write-only counterpart for "Owner.method". A method an
+ * [ExtensionOf] class adds is recorded under that class only, and without the index
+ * those classes are unknown, so the zero covers the owner itself, not the method.
+ * Seen on a VM: 0 here, 12 callers on the extension class's path. The headline says
+ * so, because a reader who stops at "Total References Found: 0" takes it as final.
+ */
+function buildOwnerOnlyEmptyResult(
+  displayName: string,
+  owner: string,
+  memberName: string,
+  bridgeTargets: string[],
+): { content: Array<{ type: 'text'; text: string }> } {
+  let out = `# References to \`${displayName}\`\n\n`;
+  out += `**Result:** 0 on \`${owner}\` itself — methods added by [ExtensionOf] classes were NOT searched\n`;
+  out += `_Source: C# bridge (DYNAMICSXREFDB) — the owner only; this write-only server has no symbol index ` +
+    `to find the extension classes_\n\n`;
+  out += `Nothing references \`${memberName}\` as a member of \`${owner}\`. A method that an [ExtensionOf] class ` +
+    `adds is recorded under that class only, so its callers are not counted here.\n\n`;
+  out += `Resolved xref path(s):\n`;
+  for (const t of bridgeTargets) out += `- \`${t}\`\n`;
+  out += `\n**What to do:**\n`;
+  out += `- If an extension class adds the method, pass its path: \`/Classes/<ExtensionClass>/Methods/${memberName}\`\n`;
+  out += `- Or call \`find_references\` on the shared (read-only) server: it searches its symbol index by name\n`;
+  return { content: [{ type: 'text', text: out }] };
+}
+
+/**
  * targetTypes the name-based fallback can actually search for. The tool schema
  * advertises five more (edt, form, query, view, report) that have no branch in
  * the scan below, so asking for one ran NO query at all and reported
@@ -539,14 +566,9 @@ export async function findReferencesTool(
     // On 'error'/'unavailable' fall through to the FTS heuristic instead of reporting
     // a confident "0 references" we can't stand behind.
     if (memberScoped && bridgeOutcome.status === 'empty') {
-      const scoped = buildScopedEmptyResult(targetName, bridgeTargets);
-      if (extensionMethodsUnresolved) {
-        scoped.content[0].text += `\n> ⚠️ A method that an [ExtensionOf] class adds to \`${owner}\` is recorded ` +
-          `under that class, and finding those classes needs the symbol index, which this write-only server ` +
-          `does not have. If the method comes from an extension, pass ` +
-          `\`/Classes/<ExtensionClass>/Methods/${memberName}\`, or call \`find_references\` on the shared server.\n`;
-      }
-      return scoped;
+      return extensionMethodsUnresolved && owner
+        ? buildOwnerOnlyEmptyResult(targetName, owner, memberName, bridgeTargets)
+        : buildScopedEmptyResult(targetName, bridgeTargets);
     }
 
     // The scan below has no branch for edt/form/query/view/report, so for those a

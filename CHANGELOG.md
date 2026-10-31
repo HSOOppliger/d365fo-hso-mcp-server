@@ -46,8 +46,10 @@ those are called out explicitly below.
   index is an empty stub), so it says so and points to the shared server's
   `find_references` instead: a bare method name without its owner, no rows for a bare
   name, no bridge, no cross-reference database, or a failed query. A zero for
-  `Owner.method` warns that methods added by `[ExtensionOf]` classes are not found
-  without the index. Full and read-only modes are unchanged. Clients that see both
+  `Owner.method` is reported as "0 on the owner itself", with the headline saying that
+  methods added by `[ExtensionOf]` classes were not searched (the xref DB records them
+  under the extension class, and only the index knows those classes) and naming the
+  explicit path. Full and read-only modes are unchanged. Clients that see both
   servers' `find_references` can hide one in their tool picker.
 
 ### Fixed

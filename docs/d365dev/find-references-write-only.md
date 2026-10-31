@@ -1,6 +1,6 @@
 # feat(find-references): answer from DYNAMICSXREFDB in write-only mode
 
-*Draft upstream pull request for dynamics365ninja/d365fo-mcp-server, not filed yet. Branch `feat/find-references-write-only`, commit a105e64d on upstream `main` 5122a30b. On `d365dev` the same change is tag `v1.22.0-d365dev.2`. The text below is the PR description to file.*
+*Draft upstream pull request for dynamics365ninja/d365fo-mcp-server, not filed yet. Branch `feat/find-references-write-only`, commit 10d786d1 on upstream `main` 5122a30b. On `d365dev` the same change is tag `v1.22.0-d365dev.3` (`.2` plus the "0 on the owner itself" headline). The text below is the PR description to file.*
 
 ## The deployment this is for
 
@@ -44,7 +44,7 @@ So in the recommended developer setup, `find_references` always runs where there
   | Bare method name with `targetType: "method"` | not sent; points to the shared server or asks for `Owner.method`. Only the index knows the declaring types, and the bridge would read the name as a type and match nothing |
 
 - **Where full mode would run the name-based scan, the companion points to the shared server instead.** This covers no bridge, no cross-reference database, a failed query, and no rows for a lookup that isn't scoped to a member. The answer says it is not a count of zero, reuses the existing reason and setup advice (`bridgeFallbackReason`, `xrefSetupAdvice`), and names `find_references` on the shared server. A failed query is `isError: true`, as for labels.
-- **A zero for `Owner.method` warns about `[ExtensionOf]` methods.** A method an extension class adds is recorded under that class (`/Classes/<Ext>/Methods/<m>`). In full mode the index finds those classes (`extension_metadata`); the bridge's own expansion covers fields and enum values added by extensions, but not methods. Without the index, a zero can miss these callers, so the answer says so and names the explicit path.
+- **A zero for `Owner.method` is headlined as "0 on the owner itself".** A method an extension class adds is recorded under that class (`/Classes/<Ext>/Methods/<m>`). In full mode the index finds those classes (`extension_metadata`); the bridge's own expansion covers fields and enum values added by extensions, but not methods. Without the index the zero covers only the owner. The headline reads `**Result:** 0 on <Owner> itself — methods added by [ExtensionOf] classes were NOT searched` instead of `Total References Found: 0`, and the answer names the explicit path. A warning below a bare zero wasn't enough: a reader who stops at the first line takes the zero as final.
 - **Unchanged:**
   - labels, and the five types the scan cannot search (edt, form, query, view, report), never used the scan, and the shared server can't answer them either;
   - `full` and `read-only` behaviour;
@@ -61,13 +61,21 @@ To keep one, hide the other: uncheck it in the VS Code / Visual Studio tool pick
 ## Tests
 
 - `tests/tools/findReferencesWriteOnly.test.ts` (new), with a stubbed bridge and the empty write-only index:
-  - **answered by the bridge:** typed name → `/Tables/<name>`; untyped bare name and `Owner.member` passed through; AOT path as given; a zero for `Owner.method` carries the `[ExtensionOf]` warning;
+  - **answered by the bridge:** typed name → `/Tables/<name>`; untyped bare name and `Owner.member` passed through; AOT path as given; a zero for `Owner.method` (typed, untyped, or via `ownerName`) has the "0 on the owner itself" headline and no `Total References Found`; a zero for `Owner.field` keeps the plain zero;
   - **pointer:** a bare method name is not sent to the bridge; no rows, no bridge, no xref database (names `D365FO_XREF_DB_NAME`) and a failed query (`isError`) each name the shared server and never the name-based scan;
   - **kept:** the label answer and the "inconclusive" answer for an EDT;
   - **unchanged in `full` and `read-only`:** the name-based fallback, a bare method name still sent to the bridge, no `[ExtensionOf]` warning.
 - `tests/server/serverMode.test.ts`: `find_references` is allowed in every mode.
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (522 test files passed, 2 skipped; 7481 tests passed, 30 skipped).
-- **On a D365FO VM:** not yet run; result to be added here before filing.
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (522 test files passed, 2 skipped; 7482 tests passed, 30 skipped).
+- **On a D365FO VM** (traditional LCS dev VM, DYNAMICSXREFDB with ~5.6M names and ~22.8M references, companion in `write-only` mode, Claude Code):
+  - `CustTable` with `targetType: "table"`: 59,316 references from the bridge, X++ code and metadata. The shared read-only server answered the same call with 47, from its name-based scan of X++ code.
+  - `CustTable.validateWrite`, untyped: 7 callers from the bridge.
+  - `CustAccount` with `targetType: "edt"`: 3,039 references.
+  - Bare `validateWrite` with `targetType: "method"`: the pointer, with no bridge query.
+  - A method added by a custom `[ExtensionOf]` class, as `Owner.method`: 0; its explicit `/Classes/<Ext>/Methods/<m>` path returned 12 callers. That run had the earlier wording (a warning below `Total References Found: 0`), which is why the headline changed.
+  - With a non-existent database name configured, the companion pointed to the shared server and named `D365FO_XREF_DB_NAME`.
+  - With a `permissions.deny` rule on the shared server's tool, only the companion's `find_references` remained.
+  - UDE not tested.
 
 ## Checklist
 

@@ -81,12 +81,29 @@ describe('find_references in write-only mode — answered by the bridge', () => 
     expect(out).toContain('C# bridge (DYNAMICSXREFDB)');
   });
 
-  it('warns that a zero for "Owner.method" can miss methods added by [ExtensionOf] classes', async () => {
-    const out = await text({ targetName: 'ContosoTable.contosoCheck', targetType: 'method' }, xrefBridge());
+  it('says in the headline that a zero for "Owner.method" left out methods added by [ExtensionOf] classes', async () => {
+    // Seen on a VM: 0 for Owner.method, 12 callers on the extension class's path.
+    for (const args of [
+      { targetName: 'ContosoTable.contosoCheck', targetType: 'method' },
+      { targetName: 'ContosoTable.contosoCheck' },
+      { targetName: 'contosoCheck', ownerName: 'ContosoTable' },
+    ]) {
+      const out = await text(args, xrefBridge());
+      const headline = out.split('\n').find(l => l.startsWith('**'));
+
+      expect(headline, JSON.stringify(args)).toBe(
+        '**Result:** 0 on `ContosoTable` itself — methods added by [ExtensionOf] classes were NOT searched');
+      expect(out).not.toContain('Total References Found');
+      expect(out).toContain('/Classes/<ExtensionClass>/Methods/contosoCheck');
+      expect(out).toContain(SHARED_SERVER);
+    }
+  });
+
+  it('keeps the plain zero for a field: the bridge itself adds the fields of table extensions', async () => {
+    const out = await text({ targetName: 'ContosoTable.contosoField', targetType: 'field' }, xrefBridge());
 
     expect(out).toContain('**Total References Found:** 0');
-    expect(out).toContain('[ExtensionOf]');
-    expect(out).toContain('/Classes/<ExtensionClass>/Methods/contosoCheck');
+    expect(out).not.toContain('[ExtensionOf]');
   });
 });
 
