@@ -1,6 +1,6 @@
 # feat(xref): cross-references from a SQLite export of DYNAMICSXREFDB (`D365FO_XREF_SQLITE_PATH`)
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7`, the fallback-text fix in `.8` and the index-only totals in `.9` (one commit on the PR branch); not yet filed, no PR branch yet. The test counts below are for `d365dev`.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7`, the fallback-text fix in `.8` and the index-only totals in `.9`. PR branch `feat/xref-sqlite-provider` = one commit `ffef81ac` on upstream `main` `5122a30b`, pushed to the fork; not yet filed. The test counts below are for the PR branch (`d365dev`: 529 files, 7,710 tests).*
 
 ## The deployment this is for
 
@@ -105,10 +105,25 @@ So an export should copy only the references whose source has a name (`WHERE EXI
   - **opening:** lazy (nothing touched until first use, missing file is a status logged once), `meta.schema` `'2'` refused, no `meta` table refused, `kind` `delta` refused, missing indexes refused, a non-SQLite file refused, export date and module count;
   - **read-only:** SHA-256 and mtime of the file unchanged after every query type, no file created next to it, writes and temp tables refused on the connection, no `ATTACH` in any statement;
   - **file replaced while running:** atomic rename → the new data; rewrite in place → the new data; replaced by garbage or removed → not ready, no crash, then a valid file again → answers; a failed query is an error ("NOT an empty result") and the next call recovers.
-- `tests/xref/xrefSource.test.ts` (new): selection order (bridge with xref → bridge; bridge without xref, not ready, or absent → file; unusable file → as before); provider from the environment created without opening; the `get_workspace_info` description; `find_references` on the file (source line, metadata rows, an authoritative zero for an EDT, the reason when the file is unusable, `20000+`, label where-used); **the same result rendered via a stub bridge and via the file is identical apart from the source line**; CoC, event handler and API usage formatting; `doctor` from the config file (relative path) and the environment; the unusable-file text without the file's path, and a failed query on the file pointing to the server log (EDT, name-based fallback and label answers).
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (529 test files passed, 2 skipped; 7710 tests passed, 30 skipped).
+- `tests/xref/xrefSource.test.ts` (new): selection order (bridge with xref → bridge; bridge without xref, not ready, or absent → file; unusable file → as before); provider from the environment created without opening; the `get_workspace_info` description; `find_references` on the file (source line, metadata rows, an authoritative zero for an EDT, the reason when the file is unusable, `20000+`, label where-used); **the same result rendered via a stub bridge and via the file is identical apart from the source line**; CoC, event handler and API usage formatting; `doctor` from the config file (relative path) and the environment; how totals are counted (joined, or from the index with the number the export left out); an exact total past 20,000 for a file with `meta.refs_without_source_removed`; the unusable-file text without the file's path, and a failed query on the file pointing to the server log (EDT, name-based fallback and label answers).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (523 test files passed, 2 skipped; 7521 tests passed, 30 skipped).
 - Smoke run of the built server (`read-only`, HTTP) with a synthetic file: `/health` ready in 0.6 s, the startup line names the export, `find_references(ContosoTable, table)` answered from the file with code and metadata rows.
-- Not yet measured on a real export through the provider. The benchmark is for that. For reference, the same lookups with the `sqlite3` CLI on a 2.1 GB export (Premium SSD v2, cold cache): refs of the busiest target `LIMIT 200` 14 ms, a name 8 ms, a prefix range 4 ms, warm about 2 ms; the unbounded per-module aggregate over the busiest target 3.8 s cold, 171 ms warm, which is the shape the bounds remove.
+- On a real export (197 modules, 5.6M names; Linux VM with Premium SSD v2, 16 GB RAM, node 24), `npm run xref:bench -- <file> --runs 5`, page cache dropped before the first call. Once as exported before the filter above (22.7M references, joined totals), once with it (15.6M references, `meta.refs_without_source_removed`, totals from the index). The bench picks its inputs from the file, so the busiest target differs between the two (338K references, 136K of them without a source, against 219K). Cold / warm median:
+
+  | query | without the filter | with the filter |
+  |---|---|---|
+  | file size | 2,106 MB | 1,784 MB |
+  | open + validate | 4.2 ms | 4.5 ms |
+  | name, exact (`NOCASE`) | 2.3 / 0.0 ms | 1.8 / 0.0 ms |
+  | names under a prefix (range) | 1.2 / 0.1 ms | 2.1 / 0.1 ms |
+  | refs of the busiest target | 1,471 / 76 ms, total `20000+` | 430 / 17 ms, total 219,123 (exact) |
+  | callers of the busiest target (`LIMIT 200`) | 11 / 10 ms, `108+` callers in 4 classes | 2.4 / 1.0 ms, `200+` callers in 58 classes |
+  | CoC classes of the most extended object (126 classes) | 1,162 / 10 ms | 1,111 / 10 ms |
+  | its event subscriptions (286 handlers) | 323 / 9 ms | 263 / 10 ms |
+  | 20,000 references of the busiest target joined to `Names` (bench diagnostic) | 9 / 9 ms (108 had a source) | 1,769 / 22 ms |
+  | page cache taken by the whole mix | +194 MB | +98 MB |
+
+  Process RSS grew by 8–12 MB. The last query row is the cold price of joining 20,000 references to `Names` (random reads, about 90 µs each on that disk). Without the filter it looked cheap only because almost none of the rows it joined had a source. That is the bound of the event-subscriber scan on a busy object, the one tool path that joins that many rows: up to about 1.8 s on a cold cache, about 20 ms warm. The CoC form reads every `[ExtensionOf]` line of the file once, which a warm cache then serves for any base. The CoC result (wrapped methods included) was checked by hand against SQL Server for one extension class. For reference, plain `sqlite3` on the unfiltered file: the unbounded per-module aggregate over the busiest target took 3.8 s cold, 171 ms warm, which is the shape the bounds remove.
 
 ## Checklist
 
