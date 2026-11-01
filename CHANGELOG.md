@@ -39,11 +39,16 @@ those are called out explicitly below.
   such as umlauts), across every label file and model of that language (`model` /
   `labelFileId` narrow it). Text from `query` (string or array, in `language`) and/or
   `texts=[{language, text}, …]` (max 12). Each match is listed as
-  `@File:Id  [model]  <language>: "<text>"` with the label's other indexed translations;
-  a miss is `no exact match for "<text>" (<language>)`, with "language X is not indexed"
+  `@File:Id  [model]  <language>: "<text>"` with the label's other indexed translations,
+  in a fixed order: custom models first (`CUSTOM_MODELS`, `EXTENSION_PREFIX`,
+  `D365FO_MODEL_NAME`), then label file id, then label id. `maxMatches` (1..50, default
+  20) sets how many are listed; the cut comes after sorting, so a custom copy is never the
+  one left out ("Buchungen" alone is 45 standard labels). With more than one match, a
+  distribution line says where all of them are
+  (`46 exact matches: ApplicationPlatform: SYS 27, RET 17, GLS 1`). A miss is `no exact match for "<text>" (<language>)`, with "language X is not indexed"
   when it has no rows. The lookup is deterministic, so it is not counted toward the
   search-call budget, records no search history and never carries the STOP notice or the
-  "create your own label" advice. `exact` and `texts` are accepted flat or in `params` and
+  "create your own label" advice. `exact`, `texts` and `maxMatches` are accepted flat or in `params` and
   documented in the op-spec (`get_knowledge(kind="op-spec", topic="labels")`); the
   published schema is unchanged. Normal searches are byte-for-byte unchanged.
 - **Extension name formats.** The naming styles place one token at a fixed spot, so a

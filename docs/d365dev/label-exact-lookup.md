@@ -1,6 +1,6 @@
 # feat(labels): exact label lookup — `labels(action="search", exact=true)`
 
-*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/label-exact-lookup` (cherry-picked onto upstream `main`). On `d365dev` the same change is tag `v1.22.0-d365dev.5`. Not filed yet. The text below is the PR description.*
+*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/label-exact-lookup` (cherry-picked onto upstream `main`). On `d365dev` the same change is tags `v1.22.0-d365dev.5` (lookup) and `v1.22.0-d365dev.6` (fixed custom-first order, distribution line, `maxMatches`); upstream it is one PR. Not filed yet. The text below is the PR description.*
 
 ## The question this answers
 
@@ -16,7 +16,7 @@
 ## Why this belongs in the server
 
 - **The server has the index; the caller has only the search.** A client can't do an exact lookup with the tools it has: word search plus client-side comparison is the slow, lossy route described above, and every call counts toward the budget.
-- **It is deterministic, so the budget exemption is safe.** The budget ends a *rephrasing loop*: an exact lookup has nothing to rephrase. Equal or not equal, one text gives one answer, and asking again gives the same one. It is also bounded: at most 12 texts per call, at most 20 listed matches per text, and the candidate set is capped and reported when it is cut. So it is not counted, reads no search history, and never carries the STOP notice or the "create your own label" advice (whether to create is the caller's decision on a definite answer). Normal searches keep their budget exactly as before, and exact calls don't change the count they see.
+- **It is deterministic, so the budget exemption is safe.** The budget ends a *rephrasing loop*: an exact lookup has nothing to rephrase. Equal or not equal, one text gives one answer, and asking again gives the same one. It is also bounded: at most 12 texts per call, at most 20 listed matches per text by default (50 at most), and the candidate set is capped and reported when it is cut. So it is not counted, reads no search history, and never carries the STOP notice or the "create your own label" advice (whether to create is the caller's decision on a definite answer). Normal searches keep their budget exactly as before, and exact calls don't change the count they see.
 - **Nothing changes unless it is asked for.** `exact` is a hidden knob like the other `labels` write plumbing: accepted flat or in `params`, documented in the op-spec, not in the published schema (the payload is unchanged). Without it, `search` and every other action behave exactly as before. A test pins normal-search output byte-for-byte across exact calls, and a run of seven normal searches gave identical output before and after the change.
 - **Small and self-contained.** One index method, one handler, one normaliser, one branch in `labels`. No DB schema, parser or bridge change, and no new setting.
 
@@ -29,11 +29,13 @@ labels(action="search", exact=true, query="Posting")                       # en-
 labels(action="search", exact=true, query=["Posting", "Posting date"], language="en-US")
 labels(action="search", params={exact:true, texts:[{language:"en-US", text:"Posting"},
                                                    {language:"de",    text:"Buchungen"}]})
+labels(action="search", exact=true, query="Buchungen", language="de", maxMatches=5)
 ```
 
 - `exact: true` (a stringified `"true"` is accepted too) on `action="search"`.
 - Texts: `query` (string or string[]) in `language` (default en-US), and/or `texts: [{language, text}, …]`; at most 12 per call, more is an error. Each entry is looked up on its own; the same text and language twice is one lookup. The `text` / `searchText` / `q` synonyms of `query` work as for a normal search.
 - Scope: every label file and model in that language. `model` / `labelFileId` narrow it (the header says so).
+- `maxMatches`: integer 1..50, default 20, the number of matches **listed** per text. Each listed match carries its translations, so a caller that only needs to know whether its own copy exists can ask for a few. Out of range (`0`, `51`, `2.5`, `"five"`) is an error, not clamped. Like `exact`, it is accepted flat or in `params` and is not in the published schema.
 
 ### Match
 
@@ -47,14 +49,41 @@ Not SQLite `LOWER()`: it folds ASCII only (`LOWER('PRÜFUNG')` = `prÜfung`), an
 - **Scan path.** A text without letters or digits (`-`, `%`, `_`) gives FTS nothing to match. It scans the language through `idx_labels_language_lower`, pre-filtered with `text NOT GLOB '*[A-Za-z0-9]*'`; an equal text can't contain one.
 - **Cap.** Candidates are compared shortest first, at most 50,000. If the set was cut off, the answer says so and names the length reached. It never reports "no exact match" as if that were proof. For scale on a synthetic 400k-row language: 80k FTS candidates took about 160 ms, and a scan of the whole language about 700 ms.
 
+### Order
+
+One text can have many exact matches. On a real index, the German `Buchungen` is 45 different labels in the standard models (SYS 27, RET 17, GLS 1). A team's own copy must not be lost behind them: a caller that sees only standard labels creates a duplicate. So the listed order is fixed:
+
+1. **custom models first**: `isCustomModel` (`CUSTOM_MODELS` patterns, `EXTENSION_PREFIX`, `D365FO_MODEL_NAME`, models auto-detected from the workspace), the same classification the rest of the server uses;
+2. then by **label file id**, then **label id**, then model, each case-insensitive, with the stored spelling as the tie-break.
+
+The cut (`maxMatches`) comes after sorting, so a custom copy is listed before any standard one. With no custom model configured, every model counts as standard and the order is simply label file id, then label id. The order doesn't depend on the process locale (code-unit comparison, not `localeCompare`), and two calls on the same index answer byte-for-byte the same. Sorting costs nothing measurable: 500 matches classify and sort in about 0.2 ms, and a whole 500-copy lookup with 2,000 more candidates takes about 6 ms.
+
+Translations are fetched only for the listed matches.
+
 ### Result
 
-One block per text:
+One block per text. Here with `CUSTOM_MODELS=ContosoExt` and `maxMatches=3`:
 
 ```text
-Exact label lookup — 4 text(s); equal after NFC, case and whitespace normalisation; every label file and model.
+Exact label lookup — 1 text(s); equal after NFC, case and whitespace normalisation; every label file and model; listed custom models first, then by label file id and label id.
+
+"Buchungen" (de) — 46 exact match(es):
+  46 exact matches: ContosoExt (custom): ContosoExt 1; ApplicationPlatform: SYS 27, RET 17, GLS 1
+  @ContosoExt:Postings  [ContosoExt]  de: "Buchungen"
+      en-US: "Postings"
+  @GLS2001  [ApplicationPlatform]  de: "Buchungen"
+      en-US: "Postings"
+  @RET2000  [ApplicationPlatform]  de: "Buchungen"
+  … and 43 more exact match(es) — pass model or labelFileId to narrow.
+```
+
+And several texts with the default of 20:
+
+```text
+Exact label lookup — 4 text(s); equal after NFC, case and whitespace normalisation; every label file and model; listed custom models first, then by label file id and label id.
 
 "POSTING" (en-US) — 2 exact match(es):
+  2 exact matches: ApplicationPlatform: SYS 1; ContosoExt: ContosoExt 1
   @SYS1001  [ApplicationPlatform]  en-US: "Posting"
       de: "Buchung"
   @ContosoExt:Posting  [ContosoExt]  en-US: "Posting"
@@ -70,26 +99,33 @@ no exact match for "Posting" (ja) — language ja is not indexed
 ```
 
 - Each match: the reference (`formatLabelReference`, so legacy ids stay `@SYS1001`), the model, the language and the stored text. After it, that label's other indexed languages (same label id, label file and model), one line each.
-- At most 20 matches per text, then `… and N more exact match(es)`.
+- **Distribution line**, whenever a text has more than one match: `N exact matches: <model>: <file> n, <file> n; <model>: …`, covering *all* matches, not only the listed ones. Custom models come first, marked `(custom)`; the other models follow by number of matches, and inside a model the label files by number of matches. The line names at most 8 model/label-file groups, then `and N more groups`.
+- `maxMatches` matches per text (default 20), then `… and N more exact match(es)`. The count in the block header and in the distribution line is always the full number.
 - A cut-off candidate set adds a ⚠️ line, or replaces the "no exact match" line with one that says it isn't proof.
 
 ## Tests
 
-- `tests/tools/labelExactLookup.test.ts` (22), on a real in-memory index through the `labels` tool:
+- `tests/tools/labelExactLookup.test.ts` (36), on a real in-memory index through the `labels` tool:
   - **Matching:** exact hit with translations; the same text in a standard and a custom label file; case and surrounding whitespace; inner whitespace collapsed on both sides; non-ASCII case and a stored decomposed `ü`; a substring, a longer and a shorter text don't match.
   - **Call shapes:** several languages in one call (`params.texts`); text only in another language → no match; language not indexed; punctuation-only text and FTS operator words (`NOT POSTED`); the `text` synonym and `exact: "true"`; more than 12 texts and an empty call rejected; 20-match cap with the rest counted.
   - **Truncation:** a cut-off candidate set from the index (shortest first), and its rendering, which never reads as plain "no exact match".
   - **Budget:** ten exact calls, then a normal search: no STOP notice, and the call count is 1. Control: the third normal search still gets its STOP, with an exact call in between not counted. An exact miss carries no "create your own" advice and leaves no history behind for a later fruitless search. Normal-search output is byte-identical with and without exact calls before it.
-  - **Contract:** `exact` / `texts` stay out of the published schema; the op-spec carries the contract and resolves for `topic="labels.exact"`.
+  - **Order and listing** (the 46-copy shape: SYS 27, RET 17, GLS 1 in one standard model, plus one copy in another model):
+    - no custom model configured: label file id, then label id, with the exact distribution line;
+    - a custom copy whose model sorts *last* is listed first under `CUSTOM_MODELS`, and under `EXTENSION_PREFIX`. Control: without the setting it is cut off;
+    - two calls answer identically;
+    - no distribution line for a single match; the line stops after 8 groups;
+    - `maxMatches` 5 (flat, and as a string in `params`) lists 5 and counts 41 more; 50 lists all 46; `0`, `51`, `2.5`, `"five"` and `-1` are errors.
+  - **Contract:** `exact` / `texts` / `maxMatches` stay out of the published schema; the op-spec carries the contract (including the order rule) and resolves for `topic="labels.exact"`.
 - Normal-search output was compared byte-for-byte before and after the change: seven calls (single, batch, no hit, other language, punctuation, `exact:false`, verbose), including the calls that carry the STOP notice. Identical.
 - `tests/utils/toolSchemaBudget.test.ts` and `tests/tools/schemaHeadroom.test.ts` are unchanged and green.
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (527 test files passed, 2 skipped; 7,637 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (527 test files passed, 2 skipped; 7,651 tests passed, 30 skipped).
 
 ## Checklist
 
 - [x] Default behaviour unchanged (normal search byte-identical; other actions untouched); existing tests unchanged and green.
 - [x] No new setting; no DB schema, parser or bridge change.
-- [x] CHANGELOG `[Unreleased]`, `docs/MCP_TOOLS.md` (`labels` row), op-spec (`exact`, `texts`, `topic="labels.exact"`).
+- [x] CHANGELOG `[Unreleased]`, `docs/MCP_TOOLS.md` (`labels` row), op-spec (`exact`, `texts`, `maxMatches`, `topic="labels.exact"`).
 - [ ] Manual test on a D365FO dev VM.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -9,11 +9,12 @@
  * entirely outside the search budget while normal searches keep theirs.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { labelsTool } from '../../src/tools/labels';
 import { labelSearchCallCount, resetLabelSearchHistory } from '../../src/tools/analysis/labelSearchHistory';
 import { normalizeLabelText } from '../../src/utils/labelText';
+import { clearAutoDetectedModels } from '../../src/utils/modelClassifier';
 import { lookupOpSpec } from '../../src/tools/specs/opSpecs';
 import { toolSchemas } from '../../src/server/toolSchemas/index';
 import type { XppServerContext } from '../../src/types/context';
@@ -260,5 +261,120 @@ describe('contract', () => {
     expect(spec).toContain('no exact match for "<text>" (<language>)');
     expect(spec).toContain('Not counted toward the search-call budget');
     expect(lookupOpSpec('labels.exact')).toBe(spec);
+  });
+});
+
+describe('order, distribution line and maxMatches', () => {
+  // The 46-copy shape: one text in three label files of one standard model, plus
+  // a copy in ContosoExt. Ids are zero-padded so their order is obvious.
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const refsListed = (text: string) =>
+    text.split('\n').filter(l => /^ {2}@/.test(l)).map(l => l.trim().split(/\s+/)[0]);
+
+  beforeEach(() => {
+    vi.stubEnv('CUSTOM_MODELS', '');
+    vi.stubEnv('EXTENSION_PREFIX', '');
+    vi.stubEnv('D365FO_MODEL_NAME', '');
+    clearAutoDetectedModels();
+    index.bulkAddLabels([
+      ...Array.from({ length: 27 }, (_, i) => row('SYS', 'ApplicationPlatform', `SYS20${pad(i)}`, 'de', 'Buchungen')),
+      ...Array.from({ length: 17 }, (_, i) => row('RET', 'ApplicationPlatform', `RET20${pad(i)}`, 'de', 'Buchungen')),
+      row('GLS', 'ApplicationPlatform', 'GLS2001', 'de', 'Buchungen'),
+    ]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    clearAutoDetectedModels();
+  });
+
+  const buchungen = (extra: Record<string, unknown> = {}) =>
+    exact({ query: 'Buchungen', language: 'de', ...extra });
+
+  it('with no custom model, orders by label file id then label id and states the distribution', async () => {
+    const { text } = await buchungen();
+    expect(text).toContain('"Buchungen" (de) — 46 exact match(es):\n' +
+      '  46 exact matches: ApplicationPlatform: SYS 27, RET 17, GLS 1; ContosoExt: ContosoExt 1\n');
+    expect(refsListed(text)).toEqual([
+      '@ContosoExt:Posting', '@GLS2001',
+      ...Array.from({ length: 17 }, (_, i) => `@RET20${pad(i)}`),
+      '@SYS2000',
+    ]);
+    expect(text).toContain('  … and 26 more exact match(es)');
+    expect(text).toContain('listed custom models first, then by label file id and label id');
+  });
+
+  it('lists a custom copy first, even when it sorts last and more than 20 standard copies exist', async () => {
+    index.bulkAddLabels([row('ZContosoExt', 'ZContosoExt', 'BookingsPlural', 'de', 'Buchungen')]);
+
+    // Control: without the setting the custom copy sorts last and is cut off.
+    const before = await buchungen();
+    expect(refsListed(before.text)).not.toContain('@ZContosoExt:BookingsPlural');
+
+    vi.stubEnv('CUSTOM_MODELS', 'ZContosoExt');
+    const { text } = await buchungen();
+    expect(refsListed(text)[0]).toBe('@ZContosoExt:BookingsPlural');
+    expect(refsListed(text)).toHaveLength(20);
+    expect(text).toContain('  47 exact matches: ZContosoExt (custom): ZContosoExt 1; ' +
+      'ApplicationPlatform: SYS 27, RET 17, GLS 1; ContosoExt: ContosoExt 1\n');
+    expect(text).toContain('  … and 27 more exact match(es)');
+  });
+
+  it('counts a model with the EXTENSION_PREFIX as custom too', async () => {
+    index.bulkAddLabels([row('ZContosoExt', 'ZContosoExt', 'BookingsPlural', 'de', 'Buchungen')]);
+    vi.stubEnv('EXTENSION_PREFIX', 'ZContoso');
+    const { text } = await buchungen({ maxMatches: 1 });
+    expect(refsListed(text)).toEqual(['@ZContosoExt:BookingsPlural']);
+  });
+
+  it('answers identically on two calls', async () => {
+    const first = await buchungen();
+    const second = await buchungen();
+    expect(second.text).toBe(first.text);
+  });
+
+  it('has no distribution line for a single match', async () => {
+    const { text } = await exact({ query: 'Buchung', language: 'de' });
+    expect(text).toContain('"Buchung" (de) — 1 exact match(es):\n  @SYS1001');
+    expect(text).not.toContain('exact matches:');
+  });
+
+  it('caps the distribution line at 8 groups', async () => {
+    index.bulkAddLabels(Array.from({ length: 10 }, (_, i) =>
+      row(`File${i}`, `Model${i}`, 'Ten', 'en-US', 'Ten copies')));
+    const { text } = await exact({ query: 'Ten copies' });
+    expect(text).toContain('  10 exact matches: Model0: File0 1; Model1: File1 1; Model2: File2 1; ' +
+      'Model3: File3 1; Model4: File4 1; Model5: File5 1; Model6: File6 1; Model7: File7 1; and 2 more groups\n');
+  });
+
+  it('maxMatches 5 lists 5 and counts the rest, flat or in params', async () => {
+    const flat = await buchungen({ maxMatches: 5 });
+    expect(refsListed(flat.text)).toEqual(['@ContosoExt:Posting', '@GLS2001', '@RET2000', '@RET2001', '@RET2002']);
+    expect(flat.text).toContain('46 exact matches: ApplicationPlatform: SYS 27, RET 17, GLS 1; ContosoExt: ContosoExt 1');
+    expect(flat.text).toContain('  … and 41 more exact match(es)');
+
+    const nested = await call({ action: 'search', params: { exact: true, maxMatches: '5', texts: [{ language: 'de', text: 'Buchungen' }] } });
+    expect(nested.text).toBe(flat.text);
+  });
+
+  it('maxMatches 50 lists every one of 46', async () => {
+    const { text } = await buchungen({ maxMatches: 50 });
+    expect(refsListed(text)).toHaveLength(46);
+    expect(text).not.toContain('more exact match(es)');
+  });
+
+  it.each([0, 51, 2.5, 'five', -1])('maxMatches %s is an error', async (value) => {
+    const { result, text } = await buchungen({ maxMatches: value });
+    expect(result.isError).toBe(true);
+    expect(text).toContain('maxMatches must be an integer from 1 to 50');
+  });
+
+  it('keeps maxMatches out of the published schema and in the op-spec', () => {
+    const props = (toolSchemas.find(t => t.name === 'labels')!.inputSchema as any).properties;
+    expect(props.maxMatches).toBeUndefined();
+    const spec = lookupOpSpec('labels.exact');
+    expect(spec).toContain('maxMatches');
+    expect(spec).toContain('custom models (CUSTOM_MODELS, EXTENSION_PREFIX, D365FO_MODEL_NAME) first');
+    expect(spec).toContain('and N more groups');
   });
 });

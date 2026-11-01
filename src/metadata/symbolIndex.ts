@@ -27,6 +27,18 @@ const isCI = (): boolean => {
 const SUGGESTION_CACHE_ENTRIES = 32;
 
 /**
+ * Case-insensitive order with the exact spelling as tie-break, so two calls on
+ * the same rows always agree. Plain code-unit comparison, not localeCompare:
+ * the order must not depend on the process locale.
+ */
+function compareIgnoreCase(a: string, b: string): number {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  if (x !== y) return x < y ? -1 : 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+/**
  * A multi-word query, split into the substrings a symbol name must ALL contain.
  *
  * `search(query="ProcessGuide AdjustIn")` means "a name carrying both words" —
@@ -5085,6 +5097,12 @@ export class XppSymbolIndex {
    *
    * The language check is across the whole index, not the model/labelFileId
    * narrowing, so "not indexed" means the language itself is missing.
+   *
+   * Matches come back in a fixed order: custom models first (isCustomModel), then
+   * label file id, label id and model, each case-insensitive with the stored
+   * spelling as the tie-break. With no custom model configured that is simply
+   * label file id, then label id. Translations are fetched for the first
+   * `maxMatches` in that order — the ones a caller lists.
    */
   findLabelsByExactText(
     text: string,
@@ -5096,6 +5114,8 @@ export class XppSymbolIndex {
       model: string;
       language: string;
       text: string;
+      /** isCustomModel(model) — CUSTOM_MODELS, EXTENSION_PREFIX, D365FO_MODEL_NAME, auto-detected. */
+      custom: boolean;
       /** The label's other indexed languages; only on the first `maxMatches` matches. */
       translations?: Array<{ language: string; text: string }>;
     }>;
@@ -5132,8 +5152,24 @@ export class XppSymbolIndex {
     }>;
     const truncated = rows.length > candidateCap;
     const compared = truncated ? rows.slice(0, candidateCap) : rows;
-    const matches: ReturnType<XppSymbolIndex['findLabelsByExactText']>['matches'] =
-      compared.filter(r => normalizeLabelText(r.text) === wanted);
+    // Custom models first, so a caller that lists only the first N never loses its
+    // own copy of a text behind dozens of standard ones ("Buchungen" is 46 labels in
+    // the standard models alone). isStandardModel answers per model and reads the
+    // environment on every call, so it is asked once per model here.
+    const customByModel = new Map<string, boolean>();
+    const isCustom = (m: string) => {
+      let custom = customByModel.get(m);
+      if (custom === undefined) customByModel.set(m, custom = !isStandardModel(m));
+      return custom;
+    };
+    const matches: ReturnType<XppSymbolIndex['findLabelsByExactText']>['matches'] = compared
+      .filter(r => normalizeLabelText(r.text) === wanted)
+      .map(r => ({ ...r, custom: isCustom(r.model) }))
+      .sort((a, b) =>
+        Number(b.custom) - Number(a.custom) ||
+        compareIgnoreCase(a.labelFileId, b.labelFileId) ||
+        compareIgnoreCase(a.labelId, b.labelId) ||
+        compareIgnoreCase(a.model, b.model));
 
     if (matches.length > 0) {
       const others = this.labelsDb.prepare(`
