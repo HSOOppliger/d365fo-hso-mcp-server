@@ -10,7 +10,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseSyncClass } from '../../src/database/nodeSqlite';
 import {
   SqliteXrefProvider,
+  XREF_META_REFS_WITHOUT_SOURCE_REMOVED,
   XREF_SQLITE_COUNT_CAP,
+  XREF_SQLITE_INDEX_COUNT_CAP,
   XREF_SQLITE_ROWS_PER_SHAPE,
   XREF_SQLITE_SCAN_CAP,
   __testing,
@@ -155,6 +157,57 @@ describe('bounds: rows per shape, paging, count cap', () => {
     expect(r.references).toHaveLength(XREF_SQLITE_ROWS_PER_SHAPE);
     expect(r.total).toBe(XREF_SQLITE_COUNT_CAP);
     expect(r.totalCapped).toBe(true);
+  });
+
+  describe('a file whose export left out the references without a source name', () => {
+    const SOURCES_COMPLETE = { ...VALID_META, [XREF_META_REFS_WITHOUT_SOURCE_REMOVED]: '7135533' };
+    const withoutSource = (target: string, n: number) =>
+      manyRefs(target, n).map(r => ({ ...r, danglingSource: true }));
+
+    it('counts from the index, exactly, past the joined cap', () => {
+      buildXrefFixture(file, { refs: manyRefs('/Classes/ContosoBusy', XREF_SQLITE_COUNT_CAP + 50), meta: SOURCES_COMPLETE });
+      const p = open();
+      expect(p.status()).toMatchObject({ state: 'ok', countsFromIndex: true });
+      expect(p.countCap).toBe(XREF_SQLITE_INDEX_COUNT_CAP);
+      const r = p.findReferencesSync('/Classes/ContosoBusy');
+      expect(r.references).toHaveLength(XREF_SQLITE_ROWS_PER_SHAPE);
+      expect(r.total).toBe(XREF_SQLITE_COUNT_CAP + 50);
+      expect(r.totalCapped).toBeUndefined();
+    });
+
+    it('gives the joined total when every source has a name, as the key promises', () => {
+      const refs = manyRefs('/Classes/ContosoBusy', 1200);
+      buildXrefFixture(file, { refs, meta: SOURCES_COMPLETE });
+      const fromIndex = open().findReferencesSync('/Classes/ContosoBusy');
+      provider?.close();
+      fs.rmSync(file);
+      buildXrefFixture(file, { refs });
+      const joined = open().findReferencesSync('/Classes/ContosoBusy');
+      expect(fromIndex.total).toBe(1200);
+      expect(fromIndex).toEqual(joined);
+    });
+
+    it('joins to Names without the key, or with a value that is not a count', () => {
+      buildXrefFixture(file, {
+        refs: manyRefs('/Classes/ContosoBusy', XREF_SQLITE_COUNT_CAP + 50),
+        meta: { ...VALID_META, [XREF_META_REFS_WITHOUT_SOURCE_REMOVED]: 'unknown' },
+      });
+      const p = open();
+      expect(p.status()).toMatchObject({ state: 'ok', countsFromIndex: false });
+      expect(p.countCap).toBe(XREF_SQLITE_COUNT_CAP);
+      expect(p.findReferencesSync('/Classes/ContosoBusy')).toMatchObject({ total: XREF_SQLITE_COUNT_CAP, totalCapped: true });
+    });
+
+    it('trusts the key: a file that has it but still holds such references counts them', () => {
+      // 600 references with a source name and 150 without. Joined, the bridge's way: 600.
+      const refs = [...manyRefs('/Classes/ContosoBusy', 600), ...withoutSource('/Classes/ContosoBusy', 150)];
+      buildXrefFixture(file, { refs, meta: SOURCES_COMPLETE });
+      expect(open().findReferencesSync('/Classes/ContosoBusy').total).toBe(750);
+      provider?.close();
+      fs.rmSync(file);
+      buildXrefFixture(file, { refs });
+      expect(open().findReferencesSync('/Classes/ContosoBusy').total).toBe(600);
+    });
   });
 
   it('bounds the per-module aggregate', () => {
@@ -302,6 +355,9 @@ describe('every lookup stays on an index', () => {
       expect(plans.range).toMatch(/USING COVERING INDEX ix_names_path \(Path>\? AND Path<\?\)/);
       expect(plans.rangeLike).toMatch(/USING (COVERING )?INDEX ix_names_path \(Path>\? AND Path<\?\)/);
       expect(plans.wrappedCalls).toMatch(/SEARCH src USING (COVERING )?INDEX ix_names_path \(Path>\? AND Path<\?\)/);
+      // The count for a file without references lacking a source name reads the TargetId index alone.
+      expect(plans.refIndexCount).toMatch(/USING COVERING INDEX ix_ref_target \(TargetId=\?\)/);
+      expect(plans.refIndexCount).not.toMatch(/Names|\bsrc\b/);
       for (const [name, plan] of Object.entries(plans)) {
         // A full scan of either big table is what the caps exist to prevent.
         expect(plan, name).not.toMatch(/SCAN (r|ra|rc|src|tgt|n|Names|"References"|References)\b(?! USING)/);

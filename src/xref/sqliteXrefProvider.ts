@@ -18,6 +18,9 @@
  *    (`totalCapped`, `scanCapped`, `more`). For a target below the caps — the
  *    usual case — rows and totals are the bridge's own. Above them the rows are
  *    another sample of the same size than the bridge's alphabetical first 500.
+ *    A file whose export left out the references without a source name (meta
+ *    `refs_without_source_removed`) has its totals counted from the TargetId
+ *    index, up to 500,000 instead of 20,000: exact for any real target.
  *  - Read-only by construction: opened as `file:…?mode=ro&immutable=1` with
  *    `query_only` and extensions off, so no lock, journal or WAL file is ever
  *    created next to it and nothing can be written. immutable=1 tells SQLite the
@@ -73,6 +76,21 @@ import {
 export const XREF_SQLITE_ROWS_PER_SHAPE = 500;
 /** A per-shape total stops counting here (joined to Names, as the bridge counts). */
 export const XREF_SQLITE_COUNT_CAP = 20_000;
+/**
+ * The same, for a file whose export left out every reference without a source
+ * name (meta key below). There a reference counts exactly when the bridge's join
+ * would count it, so the total is read from the TargetId index alone: entries in
+ * sequence, no Names row touched. That is cheap enough for an exact total of any
+ * target in a full export (the busiest has about 340K references).
+ */
+export const XREF_SQLITE_INDEX_COUNT_CAP = 500_000;
+/**
+ * meta key an export writes when it copied only references whose SourceId has a
+ * Names row (its value: how many it left out). On a full DYNAMICSXREFDB about a
+ * third of the references have no source name (Microsoft test classes); no tool
+ * can show them, but without this key they have to be skipped on every count.
+ */
+export const XREF_META_REFS_WITHOUT_SOURCE_REMOVED = 'refs_without_source_removed';
 /** References examined at most by the event-subscriber and API-caller scans. */
 export const XREF_SQLITE_SCAN_CAP = 20_000;
 /** Names one lookup resolves to at most (a bare name's children included). */
@@ -95,6 +113,8 @@ export type XrefSqliteStatus =
       modules: number;
       /** meta values as written by the export (counts as text). */
       meta: Record<string, string>;
+      /** Totals come from the TargetId index (every source has a name), else joined to Names. */
+      countsFromIndex: boolean;
     }
   | { state: 'missing' | 'invalid'; path: string; reason: string };
 
@@ -301,6 +321,8 @@ export class SqliteXrefProvider {
   private stmts?: Statements;
   /** Modules(Id → Module) of the open file. */
   private modules = new Map<number, string>();
+  /** The open file has no reference without a source name (XREF_META_REFS_WITHOUT_SOURCE_REMOVED). */
+  private countsFromIndex = false;
   /** Identity of the file the current status describes (dev:ino:size:mtime). */
   private fileId?: string;
   private current?: XrefSqliteStatus;
@@ -325,6 +347,11 @@ export class SqliteXrefProvider {
     const st = this.current;
     const when = st?.state === 'ok' && st.exportedAt ? `, exported ${st.exportedAt}` : '';
     return `xref SQLite file (DYNAMICSXREFDB export${when})`;
+  }
+
+  /** Where a per-shape total of the open file stops counting. */
+  get countCap(): number {
+    return this.countsFromIndex ? XREF_SQLITE_INDEX_COUNT_CAP : XREF_SQLITE_COUNT_CAP;
   }
 
   /** The file's status, (re)opening it when it is new or has changed since the last call. */
@@ -357,6 +384,7 @@ export class SqliteXrefProvider {
       this.db = undefined;
     }
     this.modules = new Map();
+    this.countsFromIndex = false;
     this.fileId = undefined;
     this.current = undefined;
   }
@@ -396,7 +424,16 @@ export class SqliteXrefProvider {
       this.db = db;
       this.stmts = stmts;
       this.modules = v.modules;
-      return { state: 'ok', path: this.path, exportedAt: v.meta.exported_at, modules: v.modules.size, meta: v.meta };
+      // Trusted as written: checking it would mean looking up every reference's source.
+      this.countsFromIndex = /^\d+$/.test(v.meta[XREF_META_REFS_WITHOUT_SOURCE_REMOVED] ?? '');
+      return {
+        state: 'ok',
+        path: this.path,
+        exportedAt: v.meta.exported_at,
+        modules: v.modules.size,
+        meta: v.meta,
+        countsFromIndex: this.countsFromIndex,
+      };
     } catch (e) {
       try {
         db.close();
@@ -488,7 +525,7 @@ export class SqliteXrefProvider {
         const counted =
           offset === 0 && rows.length < limit
             ? { n: rows.length, capped: false }
-            : this.bounded(s.refCount, shapeIds, XREF_SQLITE_COUNT_CAP);
+            : this.bounded(this.countsFromIndex ? s.refIndexCount : s.refCount, shapeIds, this.countCap);
         return { rows, ...counted };
       };
       const c = shape(code);

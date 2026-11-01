@@ -40,7 +40,11 @@ those are called out explicitly below.
   API-usage lookups answer from that file with the bridge's queries and result shapes. The
   bridge still comes first when it has the database. Every query is bounded: 500 rows per
   target shape as the bridge, totals counted up to 20,000 (shown as `20000+`), event and
-  caller scans up to 20,000 references, with "more available" in the answer. The file is
+  caller scans up to 20,000 references, with "more available" in the answer. A file whose
+  export left out the references without a source name (about a third of a full xref, from
+  test code; no tool can show them) and says so in `meta.refs_without_source_removed` has its
+  totals read from the `TargetId` index instead: exact up to 500,000, so for any real target,
+  and without a `Names` lookup per reference. The file is
   opened read-only and immutable on first use (no lock, journal or WAL files; no extension
   loading), revalidated when it is replaced, and refused with a logged reason when it is
   missing, has no `meta` table, another schema or kind, or lacks the indexes; the server then

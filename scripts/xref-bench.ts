@@ -23,6 +23,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as readline from 'node:readline/promises';
 import { openXrefSqliteReadOnly, SqliteXrefProvider } from '../src/xref/sqliteXrefProvider.js';
+import { xrefSqliteCounting } from '../src/xref/xrefSource.js';
 
 const USAGE = `Usage: npm run xref:bench -- <xref.db> [--runs N] [--cold] [--target ID] [--name PATH]
   <xref.db>    the export to measure (opened read-only; the live file is fine)
@@ -217,6 +218,7 @@ async function main(): Promise<void> {
   }
   console.log('');
   console.log(`open + validate through the provider: ${openMs.toFixed(1)} ms (${status.modules} modules)`);
+  console.log(`totals: ${xrefSqliteCounting(status)}`);
   console.log(`process RSS before open: ${mb(rss0)}`);
 
   const mode = args.cold ? 'cold' : 'first';

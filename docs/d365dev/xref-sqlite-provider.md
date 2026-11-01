@@ -1,6 +1,6 @@
 # feat(xref): cross-references from a SQLite export of DYNAMICSXREFDB (`D365FO_XREF_SQLITE_PATH`)
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7` plus the fallback-text fix in `.8` (one commit on the PR branch); not yet filed, no PR branch yet. The test counts below are for `d365dev`.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7`, the fallback-text fix in `.8` and the index-only totals in `.9` (one commit on the PR branch); not yet filed, no PR branch yet. The test counts below are for `d365dev`.*
 
 ## The deployment this is for
 
@@ -38,7 +38,7 @@ The tools reach the source through `xrefSource(context)` instead of `context.bri
 | `Names(Id INTEGER PRIMARY KEY, Path TEXT, ModuleId INTEGER)` | as in `DYNAMICSXREFDB`, same ids |
 | `"References"(SourceId, TargetId, Kind, Line, "Column")` | as in `DYNAMICSXREFDB`, same ids |
 | indexes | `Names(Path COLLATE NOCASE)`, `References(TargetId)`, `References(SourceId)` |
-| `meta(key, value)` | `schema` = `'1'` (required), `kind` = `'full'` (if present), `exported_at`, optional counts |
+| `meta(key, value)` | `schema` = `'1'` (required), `kind` = `'full'` (if present), `exported_at`, optional counts, optional `refs_without_source_removed` (below) |
 
 The file is refused, with the reason logged once, when it is missing or not SQLite, has no `meta` table, has another `schema` or a `kind` other than `full`, lacks a table or column, or lacks one of the three indexes. A partial export would answer "no references" for everything it lacks, and a missing index turns every lookup into a scan of millions of rows. A refused file behaves like no file.
 
@@ -59,18 +59,24 @@ The path logic is a 1:1 port of `CrossReferenceService.cs` (`src/xref/xrefPaths.
 | Query | Bridge | Provider |
 |---|---|---|
 | reference rows | `TOP 500` per target shape, `ORDER BY` source path | `LIMIT 500` per shape without `ORDER BY` (index order), sorted afterwards; `limit`/`offset` paging in the provider API |
-| totals | exact `COUNT(*)` over all references | exact up to 20,000 per shape; beyond, `totalCapped` and the answer shows `20000+` |
+| totals | exact `COUNT(*)` over all references (joined to `Names` on the source) | joined to `Names`, exact up to 20,000 per shape; beyond, `totalCapped` and the answer shows `20000+`. With `meta.refs_without_source_removed`: from the `TargetId` index alone, exact up to 500,000 per shape |
 | event subscribers | all references to the target and its members | the object's own references first, then its members', 20,000 at most; `scanCapped`/`scanned`, "more handlers may exist" |
 | API callers | `TOP 200 … ORDER BY` module, path | the first `limit` callers among at most 20,000 references, sorted afterwards; `more` when there are more, shown as `200+` |
 | CoC classes | all `[ExtensionOf]` lines, then candidates | from the candidates' references when they have at most 5,000, else from the `[ExtensionOf]` lines (one per extension class in the file); same result either way |
 
 For a target below the caps (the usual case) rows and totals are the bridge's. Above them, the 500 rows are a different sample from the bridge's alphabetical first 500, and the total is a lower bound marked `+`.
 
+### References without a source name
+
+On a full `DYNAMICSXREFDB` about a third of the `References` rows have a `SourceId` with no `Names` row: on the database this was measured on, 7.1M of 22.7M, from 0.5M distinct ids spread through the `Names` id range. Their targets show what they were: test code (21K of them extend `SysTestCase`; the most common attributes are `SysTestCheckInTestAttribute`, `SysTestMethodAttribute` and the ATL ones). No tool can show them, because every bridge query joins `Names` on the source, and so does the provider. But a file that holds them makes every count and scan skip them: on the busiest target 19,892 of its first 20,000 references had no source, and the joined count had to walk past 136K of them (1.5 s on a cold cache).
+
+So an export should copy only the references whose source has a name (`WHERE EXISTS (SELECT 1 FROM Names n WHERE n.Id = r.SourceId)`), and record that in `meta.refs_without_source_removed` (how many it left out). For such a file a reference counts exactly when the bridge's join would count it, so the provider reads totals from the `TargetId` index alone: entries in sequence, no `Names` row touched, cheap enough for a cap of 500,000, which is exact for any target of a full export (the busiest has 338K references). The key is trusted as written; checking it would mean looking up every reference's source. A file without the key keeps the joined count and its 20,000 cap. Both work; the second is slower and its scans see fewer usable references.
+
 ### Where the source is shown
 
 - the `_Source:` line of every answer: `xref SQLite file (DYNAMICSXREFDB export, exported <exported_at>)`;
 - `get_workspace_info`: one `Xref` line when the file is configured, and a `## Cross-references` section with `diagnostics=true` (source, and for the file its path and counts). It is a local tool, so a `read-only` server doesn't offer it; there the `_Source:` line carries the date;
-- `doctor`: opens the file the same way and reports its export date, or why it is not usable;
+- `doctor`: opens the file the same way and reports its export date and how its totals are counted, or why it is not usable;
 - when the file is configured but unusable, `find_references`' fallback text says so and why (`meta.kind is 'delta'; …`), and that the server's operator can fix it. It leaves out the file's path: every client reads this text, and the path is the server's layout, which the log and `doctor` show;
 - when a query on the file fails, the answer says it was the file and that the error is in the server log (not "check the bridge log", which a server without a bridge has none of). The error itself goes only to the log.
 
@@ -94,12 +100,13 @@ For a target below the caps (the usual case) rows and totals are the bridge's. A
   - **ported queries:** bare name across both shapes (code first, categories, caller class/method, module), dangling `SourceId` never a row nor counted, `Owner.member` with metadata twin and an extension-added field, `_`/`%` literal, unknown target = exact empty result; CoC class with wrapped methods and not the decoy that names the base on another line, the same answer from the declaration-driven form on a busy base, a form data source element; event handlers with type and event, both filters; API callers grouped by class;
   - **case-insensitivity:** lower-case and upper-case names and paths;
   - **bounds:** 500 rows with the exact total below the cap; paging returns every row exactly once; total stops at 20,000 with `totalCapped`; event scan stops at 20,000 with the object's own handler still found; callers `limit` + `more` + offset; per-module count bounded;
-  - **plans:** every statement's `EXPLAIN QUERY PLAN` uses the indexes, never scans `References`/`Names`, never sorts for `ORDER BY`; prefix bounds folded (`Z…` finds `z…`);
+  - **counting from the index** (`meta.refs_without_source_removed`): exact total past 20,000; the same result as the joined count when every source has a name; a missing key or one that is not a count keeps the joined count; a file with the key that still holds references without a source counts them (the documented cost of trusting the key);
+  - **plans:** every statement's `EXPLAIN QUERY PLAN` uses the indexes, never scans `References`/`Names`, never sorts for `ORDER BY`; the index-only count reads the `TargetId` index and no `Names` row; prefix bounds folded (`Z…` finds `z…`);
   - **opening:** lazy (nothing touched until first use, missing file is a status logged once), `meta.schema` `'2'` refused, no `meta` table refused, `kind` `delta` refused, missing indexes refused, a non-SQLite file refused, export date and module count;
   - **read-only:** SHA-256 and mtime of the file unchanged after every query type, no file created next to it, writes and temp tables refused on the connection, no `ATTACH` in any statement;
   - **file replaced while running:** atomic rename → the new data; rewrite in place → the new data; replaced by garbage or removed → not ready, no crash, then a valid file again → answers; a failed query is an error ("NOT an empty result") and the next call recovers.
 - `tests/xref/xrefSource.test.ts` (new): selection order (bridge with xref → bridge; bridge without xref, not ready, or absent → file; unusable file → as before); provider from the environment created without opening; the `get_workspace_info` description; `find_references` on the file (source line, metadata rows, an authoritative zero for an EDT, the reason when the file is unusable, `20000+`, label where-used); **the same result rendered via a stub bridge and via the file is identical apart from the source line**; CoC, event handler and API usage formatting; `doctor` from the config file (relative path) and the environment; the unusable-file text without the file's path, and a failed query on the file pointing to the server log (EDT, name-based fallback and label answers).
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (529 test files passed, 2 skipped; 7704 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (529 test files passed, 2 skipped; 7710 tests passed, 30 skipped).
 - Smoke run of the built server (`read-only`, HTTP) with a synthetic file: `/health` ready in 0.6 s, the startup line names the export, `find_references(ContosoTable, table)` answered from the file with code and metadata rows.
 - Not yet measured on a real export through the provider. The benchmark is for that. For reference, the same lookups with the `sqlite3` CLI on a 2.1 GB export (Premium SSD v2, cold cache): refs of the busiest target `LIMIT 200` 14 ms, a name 8 ms, a prefix range 4 ms, warm about 2 ms; the unbounded per-module aggregate over the busiest target 3.8 s cold, 171 ms warm, which is the shape the bounds remove.
 

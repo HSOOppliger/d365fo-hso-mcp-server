@@ -18,7 +18,13 @@ import type {
   BridgeExtensionClassResult,
   BridgeReferenceResult,
 } from '../bridge/bridgeTypes.js';
-import { SqliteXrefProvider, type XrefSqliteStatus } from './sqliteXrefProvider.js';
+import {
+  SqliteXrefProvider,
+  XREF_META_REFS_WITHOUT_SOURCE_REMOVED,
+  XREF_SQLITE_COUNT_CAP,
+  XREF_SQLITE_INDEX_COUNT_CAP,
+  type XrefSqliteStatus,
+} from './sqliteXrefProvider.js';
 
 /** What the tool adapters need from a cross-reference source. The bridge client is one. */
 export interface XrefSource {
@@ -57,7 +63,7 @@ export function xrefSource(context: XrefSourceContext): XrefSource | undefined {
 }
 
 /** True when the SQLite file, not the bridge, would answer. */
-export function isSqliteXref(source: XrefSource | undefined): boolean {
+export function isSqliteXref(source: XrefSource | undefined): source is SqliteXrefProvider {
   return source instanceof SqliteXrefProvider;
 }
 
@@ -99,6 +105,15 @@ export interface XrefSourceDescription {
   sqlite?: XrefSqliteStatus;
 }
 
+/** How a usable file's totals are counted, for get_workspace_info and doctor. */
+export function xrefSqliteCounting(status: Extract<XrefSqliteStatus, { state: 'ok' }>): string {
+  return status.countsFromIndex
+    ? `from the TargetId index, exact up to ${XREF_SQLITE_INDEX_COUNT_CAP} per lookup ` +
+        `(the export left out ${status.meta[XREF_META_REFS_WITHOUT_SOURCE_REMOVED]} references without a source name)`
+    : `joined to Names, exact up to ${XREF_SQLITE_COUNT_CAP} per lookup ` +
+        `(no meta.${XREF_META_REFS_WITHOUT_SOURCE_REMOVED}: the file may hold references without a source name)`;
+}
+
 /** The active cross-reference source and, for the SQLite file, how old its data is. */
 export function describeXrefSource(context: XrefSourceContext): XrefSourceDescription {
   const sqlite = context.xrefSqlite?.status();
@@ -116,7 +131,11 @@ export function describeXrefSource(context: XrefSourceContext): XrefSourceDescri
       line:
         `SQLite export of DYNAMICSXREFDB — exported ${sqlite.exportedAt ?? '(unknown)'}, ${sqlite.modules} modules ` +
         `(only as current as that export)`,
-      detail: [`File     : ${sqlite.path}`, ...(counts ? [`Contents : ${counts}`] : [])],
+      detail: [
+        `File     : ${sqlite.path}`,
+        ...(counts ? [`Contents : ${counts}`] : []),
+        `Totals   : ${xrefSqliteCounting(sqlite)}`,
+      ],
       sqlite,
     };
   }

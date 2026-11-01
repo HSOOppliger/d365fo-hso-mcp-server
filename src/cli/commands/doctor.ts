@@ -11,6 +11,7 @@ import { p } from '../ui.js';
 import { serializeValue, settingByPath } from '../../config/settings.js';
 import { xrefSetupAdvice } from '../../config/xrefSetup.js';
 import { SqliteXrefProvider } from '../../xref/sqliteXrefProvider.js';
+import { xrefSqliteCounting } from '../../xref/xrefSource.js';
 import { bridgeFreshness, type BridgeFreshness } from '../bridgeSources.js';
 import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { commandExists } from '../exec.js';
@@ -651,7 +652,9 @@ export function checkXrefSqlite(store: SettingsStore): CheckResult | null {
     if (st.state === 'ok') {
       return {
         severity: 'ok',
-        message: `Cross-reference SQLite file: exported ${st.exportedAt ?? '(unknown)'}, ${st.modules} modules (${file})`,
+        message:
+          `Cross-reference SQLite file: exported ${st.exportedAt ?? '(unknown)'}, ${st.modules} modules, ` +
+          `totals ${xrefSqliteCounting(st)} (${file})`,
       };
     }
     return {

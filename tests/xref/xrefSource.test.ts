@@ -17,7 +17,11 @@ import { openStore, writeSetting } from '../../src/cli/settingsStore';
 import { settingByPath } from '../../src/config/settings';
 import { findReferencesTool } from '../../src/tools/analysis/findReferences';
 import { getWorkspaceInfoTool } from '../../src/tools/readers/getWorkspaceInfo';
-import { SqliteXrefProvider, XREF_SQLITE_COUNT_CAP } from '../../src/xref/sqliteXrefProvider';
+import {
+  SqliteXrefProvider,
+  XREF_META_REFS_WITHOUT_SOURCE_REMOVED,
+  XREF_SQLITE_COUNT_CAP,
+} from '../../src/xref/sqliteXrefProvider';
 import { BRIDGE_SOURCE_LABEL, describeXrefSource, xrefSource, xrefSqliteFromEnv } from '../../src/xref/xrefSource';
 import { K, VALID_META, buildXrefFixture, contosoRefs, manyRefs, tempDir } from './xrefFixture';
 
@@ -90,6 +94,14 @@ describe('the active source, for get_workspace_info', () => {
     expect(d.kind).toBe('sqlite');
     expect(d.line).toContain('exported 2026-10-30T12:00:00Z, 2 modules');
     expect(d.detail.join('\n')).toContain(file);
+    expect(d.detail.join('\n')).toContain('Totals   : joined to Names, exact up to 20000 per lookup');
+  });
+
+  it('says when totals come from the index, and how many references the export left out', () => {
+    buildXrefFixture(file, { refs: contosoRefs(), meta: { ...VALID_META, [XREF_META_REFS_WITHOUT_SOURCE_REMOVED]: '42' } });
+    expect(describeXrefSource({ xrefSqlite: provider() }).detail.join('\n')).toContain(
+      'Totals   : from the TargetId index, exact up to 500000 per lookup (the export left out 42 references without a source name)',
+    );
   });
 
   it('names the bridge when it answers, and why the file is not used when it cannot be', () => {
@@ -220,6 +232,18 @@ describe('find_references on the SQLite file', () => {
     });
   });
 
+  it('gives an exact total past the joined cap when the export left out references without a source', async () => {
+    buildXrefFixture(file, {
+      refs: manyRefs('/Classes/ContosoBusy', XREF_SQLITE_COUNT_CAP + 5),
+      meta: { ...VALID_META, [XREF_META_REFS_WITHOUT_SOURCE_REMOVED]: '0' },
+    });
+    const outcome = await tryBridgeReferences(provider(), '/Classes/ContosoBusy', 50);
+    const out = outcome.status === 'ok' ? outcome.result.content[0].text : '';
+    expect(out).toContain(`**Total:** ${XREF_SQLITE_COUNT_CAP + 5} reference(s) found (showing 500)`);
+    expect(out).toContain('the totals are exact');
+    expect(out).not.toContain('more exist than counted');
+  });
+
   it('marks a total that stopped at the count cap as a lower bound', async () => {
     buildXrefFixture(file, { refs: manyRefs('/Classes/ContosoBusy', XREF_SQLITE_COUNT_CAP + 5) });
     const outcome = await tryBridgeReferences(provider(), '/Classes/ContosoBusy', 50);
@@ -306,6 +330,7 @@ describe('doctor', () => {
       severity: 'ok',
       message: expect.stringContaining('exported 2026-10-30T12:00:00Z'),
     });
+    expect(checkXrefSqlite(store)?.message).toContain('totals joined to Names, exact up to 20000');
     process.env.D365FO_XREF_SQLITE_PATH = path.join(dir, 'absent.db');
     expect(checkXrefSqlite(store)).toMatchObject({ severity: 'warn', message: expect.stringContaining('ENOENT') });
   });

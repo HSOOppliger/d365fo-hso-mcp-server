@@ -723,7 +723,8 @@ export async function tryBridgeReferences(
     out += `_Source: ${xrefSourceLabel(bridge)} — X++ code and declarative metadata references_\n\n`;
     if (sampled && totalCapped) {
       out += `> ℹ️ ${who} returns up to ${XREF_ROW_CAP} rows per lookup for code and for metadata and counts up to ` +
-        `${XREF_SQLITE_COUNT_CAP} references each: more exist than counted, and the rows below are a sample. ` +
+        `${isSqliteXref(bridge) ? bridge.countCap : XREF_SQLITE_COUNT_CAP} references each: more exist than counted, ` +
+        `and the rows below are a sample. ` +
         `Narrow the target (e.g. \`Owner.member\`) for a complete list.\n\n`;
     } else if (sampled) {
       out += `> ℹ️ ${who} returns up to ${XREF_ROW_CAP} rows per lookup for code and for metadata: the totals are exact, ` +
