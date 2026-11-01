@@ -1,6 +1,6 @@
 # feat(labels): exact label lookup — `labels(action="search", exact=true)`
 
-*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/label-exact-lookup` (cherry-picked onto upstream `main`). On `d365dev` the same change is tags `v1.22.0-d365dev.5` (lookup) and `v1.22.0-d365dev.6` (fixed custom-first order, distribution line, `maxMatches`); upstream it is one PR. Not filed yet. The text below is the PR description.*
+*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/label-exact-lookup` (one commit, 676b76fa on upstream `main` 5122a30b). On `d365dev` the same change is two tags: `v1.22.0-d365dev.5` (the lookup) and `v1.22.0-d365dev.6` (fixed custom-first order, distribution line, `maxMatches`). Upstream it is one PR. Not filed yet. The text below is the PR description; the test counts are for the PR branch.*
 
 ## The question this answers
 
@@ -117,9 +117,9 @@ no exact match for "Posting" (ja) — language ja is not indexed
     - no distribution line for a single match; the line stops after 8 groups;
     - `maxMatches` 5 (flat, and as a string in `params`) lists 5 and counts 41 more; 50 lists all 46; `0`, `51`, `2.5`, `"five"` and `-1` are errors.
   - **Contract:** `exact` / `texts` / `maxMatches` stay out of the published schema; the op-spec carries the contract (including the order rule) and resolves for `topic="labels.exact"`.
-- Normal-search output was compared byte-for-byte before and after the change: seven calls (single, batch, no hit, other language, punctuation, `exact:false`, verbose), including the calls that carry the STOP notice. Identical.
+- Normal-search output was compared byte-for-byte between upstream `main` and this branch: seven calls (single, batch, no hit, other language, punctuation, `exact:false`, verbose), including the calls that carry the STOP notice. Identical.
 - `tests/utils/toolSchemaBudget.test.ts` and `tests/tools/schemaHeadroom.test.ts` are unchanged and green.
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (527 test files passed, 2 skipped; 7,651 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green on this branch (522 test files passed, 2 skipped; 7,498 tests passed, 30 skipped).
 
 ## Checklist
 
