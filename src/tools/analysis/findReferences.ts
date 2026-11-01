@@ -11,6 +11,7 @@ import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../util
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
 import { xrefAvailability, type BridgeReadinessSource } from '../../bridge/bridgeReadiness.js';
 import { xrefSetupAdvice } from '../../config/xrefSetup.js';
+import { xrefSource, xrefSourceLabel, xrefSqliteProblem, type XrefSourceContext } from '../../xref/xrefSource.js';
 import { SERVER_MODE, type ServerMode } from '../../server/serverMode.js';
 import * as fs from 'fs';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
@@ -175,10 +176,14 @@ function declaringMethodPaths(db: any, methodName: string): string[] | null {
  * returned nothing from the xref bridge. Does NOT fall back to the name-only FTS
  * scan — that would pool callers of every same-named member across all types.
  */
-function buildScopedEmptyResult(displayName: string, bridgeTargets: string[]): { content: Array<{ type: 'text'; text: string }> } {
+function buildScopedEmptyResult(
+  displayName: string,
+  bridgeTargets: string[],
+  source: string,
+): { content: Array<{ type: 'text'; text: string }> } {
   let out = `# References to \`${displayName}\`\n\n`;
   out += `**Total References Found:** 0\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB) — scoped to the declaring type_\n\n`;
+  out += `_Source: ${source} — scoped to the declaring type_\n\n`;
   out += `No callers found for this specific member.\n\n`;
   out += `Resolved xref path(s):\n`;
   for (const t of bridgeTargets) out += `- \`${t}\`\n`;
@@ -199,10 +204,11 @@ function buildOwnerOnlyEmptyResult(
   owner: string,
   memberName: string,
   bridgeTargets: string[],
+  source: string,
 ): { content: Array<{ type: 'text'; text: string }> } {
   let out = `# References to \`${displayName}\`\n\n`;
   out += `**Result:** 0 on \`${owner}\` itself — methods added by [ExtensionOf] classes were NOT searched\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB) — the owner only; this write-only server has no symbol index ` +
+  out += `_Source: ${source} — the owner only; this write-only server has no symbol index ` +
     `to find the extension classes_\n\n`;
   out += `Nothing references \`${memberName}\` as a member of \`${owner}\`. A method that an [ExtensionOf] class ` +
     `adds is recorded under that class only, so its callers are not counted here.\n\n`;
@@ -239,13 +245,21 @@ const FALLBACK_SEARCHABLE_TYPES = new Set(['method', 'class', 'table', 'field', 
  */
 function bridgeFallbackReason(
   status: 'empty' | 'error' | 'unavailable',
-  context: BridgeReadinessSource,
+  context: BridgeReadinessSource & Pick<XrefSourceContext, 'xrefSqlite'>,
 ): string {
   switch (status) {
     case 'empty': return 'the cross-reference database returned no rows for this target';
     case 'error': return 'the cross-reference query failed';
-    case 'unavailable':
-      switch (xrefAvailability(context)) {
+    case 'unavailable': {
+      const availability = xrefAvailability(context);
+      // A configured export that could not be used is the fault to report, unless the
+      // bridge is merely starting (then it may still answer).
+      const sqliteProblem = availability === 'starting' ? null : xrefSqliteProblem(context);
+      if (sqliteProblem) {
+        return `the C# bridge has no cross-reference database and the xref SQLite file ` +
+          `(D365FO_XREF_SQLITE_PATH) could not be used — ${sqliteProblem}`;
+      }
+      switch (availability) {
         case 'starting':
           return 'the C# bridge is still starting (a cold-start race, not a configuration problem)';
         case 'not-connected':
@@ -254,6 +268,7 @@ function bridgeFallbackReason(
           return 'the C# bridge runs without a cross-reference database: none is configured, ' +
             'or the configured one could not be reached';
       }
+    }
   }
 }
 
@@ -290,6 +305,7 @@ function describeUnsearchableType(
   targetType: string,
   status: 'empty' | 'error' | 'unavailable',
   context: BridgeReadinessSource,
+  source: string,
 ): { content: Array<{ type: 'text'; text: string }> } {
   // 'empty' is a real zero, not a missing answer. tryBridgeReferences returns it
   // only when every candidate query ran and none of them errored — anything else
@@ -309,7 +325,7 @@ function describeUnsearchableType(
     let out = `# References to \`${targetName}\`\n\n`;
     out += `**Target Type:** ${targetType}\n`;
     out += `**Total References Found:** 0\n`;
-    out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+    out += `_Source: ${source}_\n\n`;
     out += `The cross-reference database was queried and matched no rows. For a \`${targetType}\` `;
     out += `that is the entire answer: its usages live in declarative metadata (table fields, form `;
     out += `control properties, dataset bindings) that only the xref DB records, so no other source `;
@@ -401,6 +417,9 @@ export async function findReferencesTool(
     const { symbolIndex } = context;
     const { targetType, scope, limit, includeContext, ownerName } = args;
     const targetName = (args.targetName ?? args.name)!; // accept "name" alias
+    // The bridge when it has DYNAMICSXREFDB, else the SQLite export, else none (xrefSource.ts).
+    const xref = xrefSource(context);
+    const sourceLabel = xrefSourceLabel(xref);
 
     // LABEL where-used — route to the xref bridge with a "/Labels/@…" path.
     // Every referencing object type (tables, forms, EDTs, enums, reports, menu
@@ -408,12 +427,12 @@ export async function findReferencesTool(
     // declarative metadata (captions, field/EDT labels), not X++ code.
     const labelPath = resolveLabelTarget(targetName, targetType);
     if (labelPath) {
-      const outcome = await tryBridgeReferences(context.bridge, labelPath, limit, targetName, 'label');
+      const outcome = await tryBridgeReferences(xref, labelPath, limit, targetName, 'label');
       if (outcome.status === 'ok') return outcome.result;
       if (outcome.status === 'empty') {
         return { content: [{ type: 'text', text:
           `# References to label \`${targetName}\`\n\n**Total References Found:** 0\n` +
-          `_Source: C# bridge (DYNAMICSXREFDB)_\n\n` +
+          `_Source: ${sourceLabel}_\n\n` +
           `No references found. Verify the label id is written exactly as stored — ` +
           `\`@WAX2194\` (old format) or \`@LabelFile:LabelId\` (new format, e.g. \`@ApplicationPlatform:AbortButtonText\`). ` +
           `Use labels(action="search") to find the exact id from label text.\n` }] };
@@ -559,7 +578,7 @@ export async function findReferencesTool(
     }
 
     // Try C# bridge first (DYNAMICSXREFDB — live cross-references)
-    const bridgeOutcome = await tryBridgeReferences(context.bridge, bridgeTargets, limit, targetName);
+    const bridgeOutcome = await tryBridgeReferences(xref, bridgeTargets, limit, targetName);
     if (bridgeOutcome.status === 'ok') return bridgeOutcome.result;
 
     // For a member-scoped lookup, the bridge is authoritative only on a clean 'empty'.
@@ -567,15 +586,15 @@ export async function findReferencesTool(
     // a confident "0 references" we can't stand behind.
     if (memberScoped && bridgeOutcome.status === 'empty') {
       return extensionMethodsUnresolved && owner
-        ? buildOwnerOnlyEmptyResult(targetName, owner, memberName, bridgeTargets)
-        : buildScopedEmptyResult(targetName, bridgeTargets);
+        ? buildOwnerOnlyEmptyResult(targetName, owner, memberName, bridgeTargets, sourceLabel)
+        : buildScopedEmptyResult(targetName, bridgeTargets, sourceLabel);
     }
 
     // The scan below has no branch for edt/form/query/view/report, so for those a
     // "0" would mean "not searched" rather than "not found". Say that outright
     // instead of running a scan that structurally cannot see their usages.
     if (targetType && !FALLBACK_SEARCHABLE_TYPES.has(targetType)) {
-      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context);
+      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context, sourceLabel);
     }
 
     // Write-only mode: the scan below would run over an empty index.

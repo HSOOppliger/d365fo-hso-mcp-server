@@ -29,6 +29,23 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **Cross-references from a SQLite export of DYNAMICSXREFDB (`D365FO_XREF_SQLITE_PATH`).**
+  A server without the C# bridge (a shared read-only server on Linux) answered
+  `find_references` with a name-based scan of X++ method bodies: no metadata references
+  (table fields using an EDT, form data sources, relations), no type scoping, and "inconclusive"
+  for EDTs, forms, queries, views and reports. With `D365FO_XREF_SQLITE_PATH` naming a SQLite
+  copy of the cross-reference database (tables `Modules`, `Names`, `References` with the
+  source ids, a `NOCASE` index on `Names.Path`, indexes on `References.TargetId`/`SourceId`,
+  and `meta.schema = '1'`), `find_references` and the CoC-extension, event-handler and
+  API-usage lookups answer from that file with the bridge's queries and result shapes. The
+  bridge still comes first when it has the database. Every query is bounded: 500 rows per
+  target shape as the bridge, totals counted up to 20,000 (shown as `20000+`), event and
+  caller scans up to 20,000 references, with "more available" in the answer. The file is
+  opened read-only and immutable on first use (no lock, journal or WAL files; no extension
+  loading), revalidated when it is replaced, and refused with a logged reason when it is
+  missing, has no `meta` table, another schema or kind, or lacks the indexes; the server then
+  falls back exactly as before. The `_Source:` line names the file and its export date;
+  `get_workspace_info` and `doctor` show it too. `npm run xref:bench -- <file>` measures it.
 - **Exact label lookup: `labels(action="search", exact=true)`.** The search matches
   words in the label id, text and comment, ranked by relevance, so "the label whose text
   is exactly X" came back as dozens of candidates to compare by hand; and from the third

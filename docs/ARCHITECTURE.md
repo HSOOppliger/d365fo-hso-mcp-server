@@ -42,7 +42,7 @@ Three complementary data sources, one rule: **bridge-first when live metadata ma
 | Available on | all platforms | all platforms | Windows VM only |
 | Symbol search | ✅ < 10 ms | — | ✅ live |
 | Method signatures / source | ✅ snapshot | ✅ on demand | ✅ live |
-| Cross-references (callers) | ~ FTS approximation | — | ✅ exact (`DYNAMICSXREFDB`) |
+| Cross-references (callers) | ~ FTS approximation, or exact from a SQLite export of `DYNAMICSXREFDB` (`D365FO_XREF_SQLITE_PATH`) | — | ✅ exact (`DYNAMICSXREFDB`) |
 | Labels (20M+ rows) | ✅ sole source | — | create/rename only |
 | Create / modify objects | validated XML writers for types the provider cannot express | — | ✅ 13 create types, 27 modify ops |
 
@@ -144,7 +144,7 @@ Key implementation points:
 - **DiskProvider discovery** — write methods hide behind internal interfaces; the bridge casts to reach `SaveObject()`.
 - **ModelSaveInfo** — every write resolves the owning model from its descriptor, so files land in the right model.
 - **Auto-invalidation** — after each write: bridge metadata cache + SQLite index are refreshed, so the next read sees the change.
-- **Graceful degradation** — bridge missing (Azure/Linux) → read tools fall back to SQLite; `xrefAvailable: false` → xref tools fall back to FTS. Not in `write-only` mode: the companion has no index to search, so `find_references` there answers from `DYNAMICSXREFDB` only and points to the shared server's `find_references` otherwise.
+- **Graceful degradation** — bridge missing (Azure/Linux) → read tools fall back to SQLite; `xrefAvailable: false` → xref tools read the SQLite export of `DYNAMICSXREFDB` named by `D365FO_XREF_SQLITE_PATH` when one is configured and valid (`src/xref/`: the bridge's four queries ported, bounded, opened read-only and immutable), else fall back to FTS. Not in `write-only` mode: the companion has no index to search, so `find_references` there answers from `DYNAMICSXREFDB` only and points to the shared server's `find_references` otherwise.
 
 ### Bridge protocol & resilience
 
@@ -227,7 +227,7 @@ graph LR
 | Read-only | `read-only` | 14 — everything except the eight `LOCAL_TOOLS` (build, BP, tests, SQL, trace, reindex, workspace, verify) | Azure App Service |
 | Write-only | `write-only` | up to 12 — the eight `LOCAL_TOOLS` + the four `ALWAYS_TOOLS` (`get_object_info`, `labels`, `d365fo_file`, `find_references`) | hybrid local companion |
 
-In the hybrid deployment only the write-only companion runs the C# bridge, so only it reaches the developer's cross-reference database (`DYNAMICSXREFDB`); the read-only server answers `find_references` from its symbol index by name. The companion therefore publishes `find_references` too, answered from the bridge alone: it has no index, so wherever the shared server would search by name it says so and points there. Its cross-references are as current as the developer's last Visual Studio build with cross-references.
+In the hybrid deployment only the write-only companion runs the C# bridge, so only it reaches the developer's cross-reference database (`DYNAMICSXREFDB`); the read-only server answers `find_references` from its symbol index by name (or, with `D365FO_XREF_SQLITE_PATH`, from an exported copy of a cross-reference database, as current as that export). The companion therefore publishes `find_references` too, answered from the bridge alone: it has no index, so wherever the shared server would search by name it says so and points there. Its cross-references are as current as the developer's last Visual Studio build with cross-references.
 
 A second, independent axis controls how many of those tools are worth advertising. `MCP_TOOL_PROFILE=core` publishes only the create-and-build loop (17 tools) instead of all 22, with `MCP_EXTRA_TOOLS` adding individual ones back; `isToolEnabled()` in `serverMode.ts` combines both axes and is the single predicate used by the ListTools filter, the runtime call gate and the startup banner. It exists because hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools across all servers) and fall back to a search-based tool surface, which costs a discovery round trip per tool the model needs.
 
