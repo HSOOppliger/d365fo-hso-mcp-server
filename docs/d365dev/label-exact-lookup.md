@@ -120,12 +120,13 @@ no exact match for "Posting" (ja) — language ja is not indexed
 - Normal-search output was compared byte-for-byte between upstream `main` and this branch: seven calls (single, batch, no hit, other language, punctuation, `exact:false`, verbose), including the calls that carry the STOP notice. Identical.
 - `tests/utils/toolSchemaBudget.test.ts` and `tests/tools/schemaHeadroom.test.ts` are unchanged and green.
 - `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green on this branch (522 test files passed, 2 skipped; 7,498 tests passed, 30 skipped).
+- On a D365FO dev VM (shared server on `v1.22.0-d365dev.6`, the same change): a text with more than 20 exact matches across standard label files (distribution line, documented order), the same with `maxMatches` 5, a text in a custom and a standard model (custom listed first), case and extra spaces, a substring (no match), two languages in one call, a language that is not indexed, a single match (no distribution line), and ten exact calls followed by a normal search (no STOP notice). All as expected. Also in use through a client skill that checks each label text per language before creating it.
 
 ## Checklist
 
 - [x] Default behaviour unchanged (normal search byte-identical; other actions untouched); existing tests unchanged and green.
 - [x] No new setting; no DB schema, parser or bridge change.
 - [x] CHANGELOG `[Unreleased]`, `docs/MCP_TOOLS.md` (`labels` row), op-spec (`exact`, `texts`, `maxMatches`, `topic="labels.exact"`).
-- [ ] Manual test on a D365FO dev VM.
+- [x] Manual test on a D365FO dev VM.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
