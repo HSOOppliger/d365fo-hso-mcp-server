@@ -29,6 +29,23 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **Exact label lookup: `labels(action="search", exact=true)`.** The search matches
+  words in the label id, text and comment, ranked by relevance, so "the label whose text
+  is exactly X" came back as dozens of candidates to compare by hand; and from the third
+  search call every answer opened with a STOP notice, which ended a legitimate workflow
+  that checks one text per label and language before creating it. With `exact=true` the
+  answer is the labels whose text equals the given text after normalising both sides
+  (Unicode NFC, trimmed, inner whitespace collapsed, case-insensitive including non-ASCII
+  such as umlauts), across every label file and model of that language (`model` /
+  `labelFileId` narrow it). Text from `query` (string or array, in `language`) and/or
+  `texts=[{language, text}, …]` (max 12). Each match is listed as
+  `@File:Id  [model]  <language>: "<text>"` with the label's other indexed translations;
+  a miss is `no exact match for "<text>" (<language>)`, with "language X is not indexed"
+  when it has no rows. The lookup is deterministic, so it is not counted toward the
+  search-call budget, records no search history and never carries the STOP notice or the
+  "create your own label" advice. `exact` and `texts` are accepted flat or in `params` and
+  documented in the op-spec (`get_knowledge(kind="op-spec", topic="labels")`); the
+  published schema is unchanged. Normal searches are byte-for-byte unchanged.
 - **Extension name formats.** The naming styles place one token at a fixed spot, so a
   convention that fixes the whole name could not be expressed: `{0}.CTSO` for every
   element extension, and a CoC-class token chosen by the type of the object extended
