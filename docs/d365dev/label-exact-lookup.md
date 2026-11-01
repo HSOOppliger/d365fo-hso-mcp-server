@@ -1,6 +1,6 @@
 # feat(labels): exact label lookup — `labels(action="search", exact=true)`
 
-*Upstream pull request draft for dynamics365ninja/d365fo-mcp-server, to be filed from branch `feat/label-exact-lookup` (one commit, 676b76fa on upstream `main` 5122a30b). On `d365dev` the same change is two tags: `v1.22.0-d365dev.5` (the lookup) and `v1.22.0-d365dev.6` (fixed custom-first order, distribution line, `maxMatches`). Upstream it is one PR. Not filed yet. The text below is the PR description; the test counts are for the PR branch.*
+*Upstream pull request [#1186](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1186) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/label-exact-lookup` (one commit, 676b76fa on upstream `main` 5122a30b). On `d365dev` the same change is two tags: `v1.22.0-d365dev.5` (the lookup) and `v1.22.0-d365dev.6` (fixed custom-first order, distribution line, `maxMatches`). The text below is the PR description as filed; the test counts are for the PR branch.*
 
 ## The question this answers
 
