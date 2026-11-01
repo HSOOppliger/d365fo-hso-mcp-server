@@ -1,6 +1,6 @@
 # fix(coc): with a method filter, count only the classes that wrap the method
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.10`. PR branch `fix/coc-method-filter-wrappers` = one commit `d3021c54` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 530 files, 7,721 tests).*
+*Upstream pull request [#1188](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1188) for dynamics365ninja/d365fo-mcp-server, filed from branch `fix/coc-method-filter-wrappers` (commit d3021c54 on upstream `main` 5122a30b). On `d365dev` the same change is tag `v1.22.0-d365dev.10`. The text below is the PR description as filed; its test counts are for the PR branch (`d365dev`: 530 files, 7,721 tests).*
 
 ## The defect
 
