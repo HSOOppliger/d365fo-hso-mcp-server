@@ -63,11 +63,12 @@ export function isSqliteXref(source: XrefSource | undefined): boolean {
 
 /**
  * Why the configured SQLite file cannot be used, or null when it can or none is
- * configured. For the "why no cross-references" texts.
+ * configured. For the "why no cross-references" texts, which every client reads:
+ * so without the file's path (the server's layout), which the log and doctor show.
  */
 export function xrefSqliteProblem(context: Pick<XrefSourceContext, 'xrefSqlite'>): string | null {
   const status = context.xrefSqlite?.status();
-  return status && status.state !== 'ok' ? `${status.path}: ${status.reason}` : null;
+  return status && status.state !== 'ok' ? status.reason.split(status.path).join('the file') : null;
 }
 
 let fromEnv: SqliteXrefProvider | undefined;

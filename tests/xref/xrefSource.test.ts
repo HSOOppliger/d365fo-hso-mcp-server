@@ -175,6 +175,49 @@ describe('find_references on the SQLite file', () => {
     expect(out).toContain('inconclusive');
     expect(out).toContain('D365FO_XREF_SQLITE_PATH');
     expect(out).toContain('no meta table');
+    expect(out).toContain("Ask the server's operator to check the cross-reference file");
+    expect(out).not.toContain('C# bridge exe');
+    // The path is the server's layout: the log and doctor show it, the client does not.
+    expect(out).not.toContain(dir);
+    expect(out).not.toContain('xref.db');
+  });
+
+  it('keeps the path out of a reason that would contain it', async () => {
+    fs.mkdirSync(file);
+    const out = (await call({ targetName: 'ContosoTable', targetType: 'table' }, { xrefSqlite: provider() }))
+      .content[0].text;
+    expect(out).toContain('not a regular file');
+    expect(out).not.toContain(dir);
+  });
+
+  describe('a query on the file that fails', () => {
+    const failing = () => {
+      buildXrefFixture(file, { refs: contosoRefs() });
+      const p = provider();
+      vi.spyOn(p, 'findReferences').mockRejectedValue(new Error('disk I/O error'));
+      return p;
+    };
+
+    it('names the file and the server log, not the bridge log', async () => {
+      const out = (await call({ targetName: 'ContosoAmountEdt', targetType: 'edt' }, { xrefSqlite: failing() }))
+        .content[0].text;
+      expect(out).toContain('inconclusive');
+      expect(out).toContain('the query on the xref SQLite file (D365FO_XREF_SQLITE_PATH) failed');
+      expect(out).toContain('The error is in the server log');
+      expect(out).not.toContain('bridge log');
+      expect(out).not.toContain('disk I/O error');
+    });
+
+    it('says the same in the name-based fallback and the label answer', async () => {
+      const p = failing();
+      const table = (await call({ targetName: 'ContosoTable', targetType: 'table' }, { xrefSqlite: p })).content[0]
+        .text;
+      expect(table).toContain('_Source: name-based index scan — the query on the xref SQLite file');
+      const label = await call({ targetName: '@Contoso:Amount' }, { xrefSqlite: p });
+      expect(label.isError).toBe(true);
+      expect(label.content[0].text).toContain('The query on the xref SQLite file failed. The error is in the server log');
+      expect(label.content[0].text).not.toContain('bridge log');
+    });
   });
 
   it('marks a total that stopped at the count cap as a lower bound', async () => {

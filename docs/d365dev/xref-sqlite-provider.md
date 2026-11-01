@@ -1,6 +1,6 @@
 # feat(xref): cross-references from a SQLite export of DYNAMICSXREFDB (`D365FO_XREF_SQLITE_PATH`)
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7`; not yet filed, no PR branch yet. The test counts below are for `d365dev`.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.7` plus the fallback-text fix in `.8` (one commit on the PR branch); not yet filed, no PR branch yet. The test counts below are for `d365dev`.*
 
 ## The deployment this is for
 
@@ -71,7 +71,8 @@ For a target below the caps (the usual case) rows and totals are the bridge's. A
 - the `_Source:` line of every answer: `xref SQLite file (DYNAMICSXREFDB export, exported <exported_at>)`;
 - `get_workspace_info`: one `Xref` line when the file is configured, and a `## Cross-references` section with `diagnostics=true` (source, and for the file its path and counts). It is a local tool, so a `read-only` server doesn't offer it; there the `_Source:` line carries the date;
 - `doctor`: opens the file the same way and reports its export date, or why it is not usable;
-- when the file is configured but unusable, `find_references`' fallback text names it and the reason.
+- when the file is configured but unusable, `find_references`' fallback text says so and why (`meta.kind is 'delta'; …`), and that the server's operator can fix it. It leaves out the file's path: every client reads this text, and the path is the server's layout, which the log and `doctor` show;
+- when a query on the file fails, the answer says it was the file and that the error is in the server log (not "check the bridge log", which a server without a bridge has none of). The error itself goes only to the log.
 
 ### Setting
 
@@ -97,8 +98,8 @@ For a target below the caps (the usual case) rows and totals are the bridge's. A
   - **opening:** lazy (nothing touched until first use, missing file is a status logged once), `meta.schema` `'2'` refused, no `meta` table refused, `kind` `delta` refused, missing indexes refused, a non-SQLite file refused, export date and module count;
   - **read-only:** SHA-256 and mtime of the file unchanged after every query type, no file created next to it, writes and temp tables refused on the connection, no `ATTACH` in any statement;
   - **file replaced while running:** atomic rename → the new data; rewrite in place → the new data; replaced by garbage or removed → not ready, no crash, then a valid file again → answers; a failed query is an error ("NOT an empty result") and the next call recovers.
-- `tests/xref/xrefSource.test.ts` (new): selection order (bridge with xref → bridge; bridge without xref, not ready, or absent → file; unusable file → as before); provider from the environment created without opening; the `get_workspace_info` description; `find_references` on the file (source line, metadata rows, an authoritative zero for an EDT, the reason when the file is unusable, `20000+`, label where-used); **the same result rendered via a stub bridge and via the file is identical apart from the source line**; CoC, event handler and API usage formatting; `doctor` from the config file (relative path) and the environment.
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (529 test files passed, 2 skipped; 7701 tests passed, 30 skipped).
+- `tests/xref/xrefSource.test.ts` (new): selection order (bridge with xref → bridge; bridge without xref, not ready, or absent → file; unusable file → as before); provider from the environment created without opening; the `get_workspace_info` description; `find_references` on the file (source line, metadata rows, an authoritative zero for an EDT, the reason when the file is unusable, `20000+`, label where-used); **the same result rendered via a stub bridge and via the file is identical apart from the source line**; CoC, event handler and API usage formatting; `doctor` from the config file (relative path) and the environment; the unusable-file text without the file's path, and a failed query on the file pointing to the server log (EDT, name-based fallback and label answers).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (529 test files passed, 2 skipped; 7704 tests passed, 30 skipped).
 - Smoke run of the built server (`read-only`, HTTP) with a synthetic file: `/health` ready in 0.6 s, the startup line names the export, `find_references(ContosoTable, table)` answered from the file with code and metadata rows.
 - Not yet measured on a real export through the provider. The benchmark is for that. For reference, the same lookups with the `sqlite3` CLI on a 2.1 GB export (Premium SSD v2, cold cache): refs of the busiest target `LIMIT 200` 14 ms, a name 8 ms, a prefix range 4 ms, warm about 2 ms; the unbounded per-module aggregate over the busiest target 3.8 s cold, 171 ms warm, which is the shape the bounds remove.
 

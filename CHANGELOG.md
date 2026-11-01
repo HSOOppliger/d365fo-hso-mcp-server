@@ -44,8 +44,11 @@ those are called out explicitly below.
   opened read-only and immutable on first use (no lock, journal or WAL files; no extension
   loading), revalidated when it is replaced, and refused with a logged reason when it is
   missing, has no `meta` table, another schema or kind, or lacks the indexes; the server then
-  falls back exactly as before. The `_Source:` line names the file and its export date;
-  `get_workspace_info` and `doctor` show it too. `npm run xref:bench -- <file>` measures it.
+  falls back exactly as before, and `find_references` says why the file was refused (without
+  its path, which only the log and `doctor` show) and that the server's operator can fix it. A
+  query on the file that fails is reported as that, with the server log as the place to look.
+  The `_Source:` line names the file and its export date; `get_workspace_info` and `doctor`
+  show it too. `npm run xref:bench -- <file>` measures it.
 - **Exact label lookup: `labels(action="search", exact=true)`.** The search matches
   words in the label id, text and comment, ranked by relevance, so "the label whose text
   is exactly X" came back as dozens of candidates to compare by hand; and from the third

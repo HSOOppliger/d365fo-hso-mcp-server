@@ -11,7 +11,14 @@ import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../util
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
 import { xrefAvailability, type BridgeReadinessSource } from '../../bridge/bridgeReadiness.js';
 import { xrefSetupAdvice } from '../../config/xrefSetup.js';
-import { xrefSource, xrefSourceLabel, xrefSqliteProblem, type XrefSourceContext } from '../../xref/xrefSource.js';
+import {
+  isSqliteXref,
+  xrefSource,
+  xrefSourceLabel,
+  xrefSqliteProblem,
+  type XrefSource,
+  type XrefSourceContext,
+} from '../../xref/xrefSource.js';
 import { SERVER_MODE, type ServerMode } from '../../server/serverMode.js';
 import * as fs from 'fs';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
@@ -243,13 +250,26 @@ const FALLBACK_SEARCHABLE_TYPES = new Set(['method', 'class', 'table', 'field', 
  * a setting, not a mode. A bridge still starting is a third, and needs no fix at
  * all: calling it "not connected" is the conflation behind issue #826.
  */
+/** What to do when the configured xref SQLite file was refused. The file's path is left to the log. */
+const SQLITE_UNUSABLE_ADVICE =
+  'Ask the server\'s operator to check the cross-reference file (D365FO_XREF_SQLITE_PATH): ' +
+  'the server log and `doctor` name the file and say why it was refused';
+
+/** Where to look when a query on the xref SQLite file failed. The error itself is in the server log. */
+const SQLITE_ERROR_ADVICE =
+  'The error is in the server log. Re-run once: the file is reopened on the next call. If it fails ' +
+  'again, ask the server\'s operator to check the cross-reference file (D365FO_XREF_SQLITE_PATH)';
+
 function bridgeFallbackReason(
   status: 'empty' | 'error' | 'unavailable',
   context: BridgeReadinessSource & Pick<XrefSourceContext, 'xrefSqlite'>,
+  source?: XrefSource,
 ): string {
   switch (status) {
     case 'empty': return 'the cross-reference database returned no rows for this target';
-    case 'error': return 'the cross-reference query failed';
+    case 'error': return isSqliteXref(source)
+      ? 'the query on the xref SQLite file (D365FO_XREF_SQLITE_PATH) failed'
+      : 'the cross-reference query failed';
     case 'unavailable': {
       const availability = xrefAvailability(context);
       // A configured export that could not be used is the fault to report, unless the
@@ -280,10 +300,14 @@ function bridgeFallbackReason(
  */
 function bridgeFallbackAdvice(
   status: 'empty' | 'error' | 'unavailable',
-  context: BridgeReadinessSource,
+  context: BridgeReadinessSource & Pick<XrefSourceContext, 'xrefSqlite'>,
 ): string {
   if (status !== 'unavailable') return '';
-  switch (xrefAvailability(context)) {
+  const availability = xrefAvailability(context);
+  // The reader cannot fix the server's file; whoever runs the server can, and the
+  // log and doctor tell them which file it is.
+  if (availability !== 'starting' && xrefSqliteProblem(context)) return SQLITE_UNUSABLE_ADVICE;
+  switch (availability) {
     case 'starting': return 'Retry the identical call in a few seconds, once the C# bridge has started.';
     case 'no-xref': return `To get exact cross-references: ${xrefSetupAdvice()}`;
     default: return '';
@@ -304,8 +328,9 @@ function describeUnsearchableType(
   targetName: string,
   targetType: string,
   status: 'empty' | 'error' | 'unavailable',
-  context: BridgeReadinessSource,
+  context: BridgeReadinessSource & Pick<XrefSourceContext, 'xrefSqlite'>,
   source: string,
+  xref: XrefSource | undefined,
 ): { content: Array<{ type: 'text'; text: string }> } {
   // 'empty' is a real zero, not a missing answer. tryBridgeReferences returns it
   // only when every candidate query ran and none of them errored — anything else
@@ -349,7 +374,7 @@ function describeUnsearchableType(
   out += `**Target Type:** ${targetType}\n`;
   out += `**Result:** inconclusive — this is NOT a count of zero\n\n`;
   out += `A \`${targetType}\` where-used needs the cross-reference database (DYNAMICSXREFDB), `;
-  out += `and ${bridgeFallbackReason(status, context)}.\n\n`;
+  out += `and ${bridgeFallbackReason(status, context, xref)}.\n\n`;
   out += `The name-based index fallback cannot stand in for it here: it scans only X++ method `;
   out += `bodies, and only the first ten lines of each, whereas a ${targetType} is referenced `;
   out += `mostly from declarative metadata that is not in the text index at all. Running it would `;
@@ -360,7 +385,7 @@ function describeUnsearchableType(
   // that the bridge it had just used was missing, and a disconnected bridge to set
   // a database name that was not the problem.
   const advice = bridgeFallbackAdvice(status, context) || (status === 'error'
-    ? 'Check the bridge log for why the cross-reference query failed, then re-run'
+    ? (isSqliteXref(xref) ? SQLITE_ERROR_ADVICE : 'Check the bridge log for why the cross-reference query failed, then re-run')
     : 'Ensure the C# bridge exe is built and D365FO metadata is accessible ' +
       '(`.mcp.json` → `context.packagePath`), then re-run');
   out += `- ${advice}\n`;
@@ -442,12 +467,15 @@ export async function findReferencesTool(
       // partial answer by falling through to it.
       const why = outcome.status === 'unavailable'
         ? `Here, ${bridgeFallbackReason('unavailable', context)}.`
-        : 'The cross-reference query failed — check the bridge log.';
+        : isSqliteXref(xref)
+          ? `The query on the xref SQLite file failed. ${SQLITE_ERROR_ADVICE}.`
+          : 'The cross-reference query failed — check the bridge log.';
       const advice = bridgeFallbackAdvice(outcome.status, context);
       return { content: [{ type: 'text', text:
         `# References to label \`${targetName}\`\n\n` +
         `⚠️ Label where-used requires the cross-reference database (DYNAMICSXREFDB), available when ` +
-        `the server runs in full mode with a UDE/local xref DB configured. ${why}\n\n` +
+        `the server runs in full mode with a UDE/local xref DB configured, or from an xref SQLite ` +
+        `export (D365FO_XREF_SQLITE_PATH). ${why}\n\n` +
         `Unlike code symbols, label references live mostly in declarative metadata (form captions, ` +
         `field/EDT labels, menu-item captions, …) that is not in the text index — so there is no ` +
         `reliable fallback.\n` +
@@ -594,7 +622,7 @@ export async function findReferencesTool(
     // "0" would mean "not searched" rather than "not found". Say that outright
     // instead of running a scan that structurally cannot see their usages.
     if (targetType && !FALLBACK_SEARCHABLE_TYPES.has(targetType)) {
-      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context, sourceLabel);
+      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context, sourceLabel, xref);
     }
 
     // Write-only mode: the scan below would run over an empty index.
@@ -603,7 +631,9 @@ export async function findReferencesTool(
       const extra: string[] = [];
       const advice = bridgeFallbackAdvice(status, context);
       if (advice) extra.push(advice);
-      if (status === 'error') extra.push('Check the bridge log for why the cross-reference query failed');
+      if (status === 'error') {
+        extra.push(isSqliteXref(xref) ? SQLITE_ERROR_ADVICE : 'Check the bridge log for why the cross-reference query failed');
+      }
       if (status === 'empty' && !memberScoped && !isAotPath) {
         extra.push(`If \`${memberName}\` is a method, pass \`Owner.${memberName}\` (or set \`ownerName\`): ` +
           `a bare name is looked up here as a type`);
@@ -612,7 +642,7 @@ export async function findReferencesTool(
         extra.push('This machine\'s cross-references are only as current as its last Visual Studio build ' +
           'with cross-references');
       }
-      return companionPointer(targetName, status, bridgeFallbackReason(status, context), extra);
+      return companionPointer(targetName, status, bridgeFallbackReason(status, context, xref), extra);
     }
 
     // FTS fallback (xref bridge unavailable) — name-based heuristic, cannot scope
@@ -688,7 +718,7 @@ export async function findReferencesTool(
       output += `**Target Type:** ${targetType}\n`;
     }
     output += `**Scope:** ${scope}\n`;
-    output += `_Source: name-based index scan — ${bridgeFallbackReason(bridgeOutcome.status, context)}; heuristic, not scoped to a declaring type._\n`;
+    output += `_Source: name-based index scan — ${bridgeFallbackReason(bridgeOutcome.status, context, xref)}; heuristic, not scoped to a declaring type._\n`;
     const advice = bridgeFallbackAdvice(bridgeOutcome.status, context);
     if (advice) output += `> ℹ️ ${advice}\n`;
     if (intraTypeRefs.length > 0) {
@@ -716,7 +746,7 @@ export async function findReferencesTool(
     if (tableTarget) {
       output += `> ⚠️ For a table this counts X++ code only. Its declarative references — ` +
         `relations, data entity mappings, fields bound on forms — are recorded only in the cross-reference ` +
-        `database, and ${bridgeFallbackReason(bridgeOutcome.status, context)}.` +
+        `database, and ${bridgeFallbackReason(bridgeOutcome.status, context, xref)}.` +
         (formsUsingTable?.indexed
           ? ` Its form data sources are listed below from the index (base forms only: form extensions, ` +
             `views, maps and code inside forms are not covered).`
@@ -739,7 +769,7 @@ export async function findReferencesTool(
       // agent read `Total References Found: 0 … Symbol might be unused` for a
       // method with two real call sites, and acted on it.
       output += `${formsUsingTable && formsUsingTable.total > 0 ? 'No X++ code references found' : 'No references found'} for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
-      output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status, context)}, call sites are matched against each method's indexed ` +
+      output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status, context, xref)}, call sites are matched against each method's indexed ` +
         `\`source_snippet\`, which holds only its FIRST TEN LINES. A call on line 11 or later of its ` +
         `caller cannot be seen from here, and long methods are exactly where calls hide. The declaring ` +
         `type's own source was read directly and had none either, which is the strongest statement ` +
