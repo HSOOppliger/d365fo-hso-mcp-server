@@ -32,7 +32,7 @@ From the `AxMenu` `OrganizationAdministration` (33 submenus, 149 items) and 43 `
 - `submenuName` (required), `submenuLabel` (label id, written as given; a value that does not start with `@` is written with a ⚠️ that BP expects a label), `parentMenuElement` (plain name of the submenu it goes under, omitted = top level).
 - **menu-extension** (`addMenuExtensionSubmenu`): a root entry with `<Parent>`, or nested in a submenu the extension adds. The parent is checked like the item op's (#1198): the base menu, this extension and the other indexed extensions of the base menu; an unknown one is refused with the list; when the base menu cannot be read the submenu is written with a ⚠️.
 - **menu** (`addMenuSubmenu`, new `src/tools/xml/menuXml.ts`): inline in the root `<Elements>` or in the named submenu of that menu; a parent the menu does not have is refused with its submenus.
-- **Names are unique in the whole menu**, because a `<Parent>` names a submenu by its plain name. A name used by the base menu or another extension is refused, pointing to `add-menu-item-to-menu` with `parentMenuElement=<name>` instead; a name in this file under another parent is refused; the same name under the same parent again is a skip ("⏭️ … SKIPPED").
+- **Names are unique in the whole menu**, because a `<Parent>` names a submenu by its plain name. A name used by the base menu or another extension is refused, pointing to `add-menu-item-to-menu` with `parentMenuElement=<name>` instead; a name in this file under another parent is refused; the same name under the same parent again is a skip ("⏭️ … SKIPPED"). A duplicate fails the build, under the same parent and under another one alike — on a dev VM, a second `EInvoice` under `Setup`, and one under `Periodic`, each gave `The name 'EInvoice' is not unique. Multiple elements have the same name.` — so the check catches it at the call, with the way to use the existing submenu instead.
 - The success message says how to fill the new submenu: `add-menu-item-to-menu` with `parentMenuElement=<submenuName>`.
 
 **`add-menu-item-to-menu` on a `menu` takes `parentMenuElement`.** With a parent, the switch arm skips the bridge (its op has no parent) and calls `directXmlAddMenuItemToMenu` with it. That writer now goes through `addMenuItem` in `menuXml.ts`:
@@ -52,7 +52,7 @@ Without a parent the bridge still goes first and the writer is its fallback, as 
 ## Out of scope / follow-ups
 
 - Submenu properties other than `Label` (`ConfigurationKey`, `CountryRegionCodes`, `FeatureClass`, images), and position (`PositionType`/`PreviousSibling`).
-- The parent and name checks on a write-only companion, which has no index and so does not find a standard base menu (#1198's follow-up): a lookup across the package folders, together with a `menu`/`menu-extension` reader in `get_object_info`.
+- The parent and name checks on a write-only companion, which has no index and so does not find a standard base menu (#1198's follow-up): a lookup across the package folders. A `menu`/`menu-extension` reader in `get_object_info` would also spare agents reading the XML from disk to find a submenu.
 - `AxMenuElementMenuReference` (hooking a menu object into another menu) has no operation.
 
 ## Tests
@@ -78,6 +78,15 @@ Also:
 - `tests/tools/d365foFileOpSpecs.test.ts` (42 operations), `tests/utils/toolInventory.test.ts`, `tests/utils/layering.test.ts`.
 
 Against the `src/` of #1198: `menuXml.test.ts` fails to load and 16 tests in the other files fail.
+
+**On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared server):
+- a submenu with a label under `Setup` in an extension of `OrganizationAdministration`, then an item into it: the item is nested in the new submenu;
+- the same `add-submenu` call again: reported as skipped, file unchanged;
+- in a menu of the model itself: a submenu, then an item into it; an item for a submenu the menu does not have is refused with the list of its submenus;
+- build and BP check clean, and the new submenus and items show up in the browser where they should;
+- a submenu named like one of the base menu (`EInvoice`, once under `Setup` where the base menu has it, once under `Periodic`): on the companion written with the "NOT checked" warning (no index there, see the follow-ups), and the build then fails both times with the error quoted above.
+
+Asked in plain words to add a submenu whose name the base menu already has, or the same submenu again, the agent read the menu XML itself and asked back instead of calling the tool; the two cases above were therefore sent as explicit tool calls.
 
 Also run, outside the suite, against the shipped files: a submenu at the top level and under each of the 74 submenus the 43 extensions add, and a submenu and an item under each of the 33 submenus of `OrganizationAdministration` and at its top level — 185 results, each parsed and checked to sit as the last child of the right collection.
 
