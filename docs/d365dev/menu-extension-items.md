@@ -1,6 +1,6 @@
 # feat(menu): add-menu-item-to-menu on a menu extension
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11` plus the corrections in `v1.22.0-d365dev.12` (items nested in the extension's own submenus, parents from other extensions, shipped-shape fixtures) and `v1.22.0-d365dev.13` (what a wrong parent does, the dev-VM test). PR branch `feat/menu-extension-add-menu-item` = one commit `00f1f54d` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,749 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11` plus the corrections in `v1.22.0-d365dev.12` (items nested in the extension's own submenus, parents from other extensions, shipped-shape fixtures) and `v1.22.0-d365dev.13` (what a wrong parent does, the dev-VM test). PR branch `feat/menu-extension-add-menu-item` = one commit `ba854436` on upstream `main` `a9094731` (rebased 2026-11-03 after #1183–#1190 were merged; only the CHANGELOG conflicted); pushed to the fork, not yet filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,749 tests).*
 
 ## The gap
 
@@ -125,7 +125,7 @@ Against `src/` before the change: the new file fails to import, and the three ne
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (522 test files passed, 2 skipped; 7489 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (533 test files passed, 2 skipped; 7778 tests passed, 30 skipped).
 
 ## Checklist
 
