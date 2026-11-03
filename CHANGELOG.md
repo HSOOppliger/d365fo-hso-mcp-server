@@ -143,6 +143,16 @@ those are called out explicitly below.
   objects, and the two operations instead of hand-written XML.
 
 ### Fixed
+- **Menu checks on a write-only companion.** The parent check of `add-menu-item-to-menu`
+  and `add-submenu` on a `menu-extension`, and `add-submenu`'s name check, read the base
+  menu and the other extensions of it from the index, or from the configured model. A
+  write-only companion has no index and a standard menu is outside its model, so it never
+  found either: every parent was written with "NOT checked", and a submenu named like one
+  of the base menu was written too and failed the next build ("The name '…' is not
+  unique"). Both now fall back to the package folders (`<root>/<Package>/<Model>/AxMenu`,
+  `…/AxMenuExtension`, under the packages path and on UDE the custom and Microsoft
+  packages paths); the package/model folder list is taken once per process. Backup copies
+  a modify leaves next to a file (`….xml.backup-…`) are not read as extensions.
 - **KW001 missed the later names of a declaration list and sized-string
   parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
   class showed xppc rejecting both ("'identifier' expected", "invalid name for a

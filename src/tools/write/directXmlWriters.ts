@@ -21,6 +21,7 @@ import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
 import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
+import { findAotFilesInAllPackages } from '../../utils/objectFileLookup.js';
 import { checkNewControlPosition, findFormControl, formDefinesControl, placeFormControl, type PlaceFormControlSpec } from '../../utils/formControlPlacement.js';
 import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import { type AddSubmenuResult, addMenuExtensionItem, addMenuExtensionSubmenu, menuSubmenuNames } from '../xml/menuExtensionXml.js';
@@ -373,20 +374,43 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
   }
 });
 
-/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
+/**
+ * The base menu's XML: the index or the configured model first, then every package
+ * folder. A write-only companion has no index and a standard menu lies outside its
+ * model, so without the second step it never sees the base menu at all.
+ */
+async function readBaseMenu(baseMenu: string, symbolIndex: unknown): Promise<string | null> {
+  const viaIndex = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
+  if (viaIndex) return viaIndex;
+  const [file] = await findAotFilesInAllPackages('AxMenu', n => n.toLowerCase() === `${baseMenu.toLowerCase()}.xml`).catch(() => []);
+  return file ? fs.readFile(file, 'utf-8').catch(() => null) : null;
+}
+
+/**
+ * Submenus the OTHER extensions of `baseMenu` add; a <Parent> may name one. From the
+ * index, or — when it has none (a write-only companion) — from the package folders.
+ */
 async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
-  let names: string[];
+  const prefix = `${baseMenu.toLowerCase()}.`;
+  let names: string[] = [];
   try {
     const rows = symbolIndex.getReadDb()
       .prepare(`SELECT DISTINCT name FROM symbols WHERE type = 'menu-extension' AND name LIKE ?`)
       .all(`${baseMenu}.%`) as { name: string }[];
     // LIKE reads `_` as a wildcard, so the prefix is confirmed here.
-    names = rows.map(r => r.name).filter(n =>
-      n.toLowerCase().startsWith(`${baseMenu.toLowerCase()}.`) && n.toLowerCase() !== self.toLowerCase());
-  } catch {
-    return [];
+    names = rows.map(r => r.name).filter(n => n.toLowerCase().startsWith(prefix) && n.toLowerCase() !== self.toLowerCase());
+  } catch { /* no index */ }
+  let xmls: Array<string | null>;
+  if (names.length > 0) {
+    xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
+  } else {
+    // `.xml` at the end: a modify outside git leaves `<file>.xml.backup-<time>` next to it.
+    const files = await findAotFilesInAllPackages('AxMenuExtension', f => {
+      const lower = f.toLowerCase();
+      return lower.startsWith(prefix) && lower.endsWith('.xml') && lower !== `${self.toLowerCase()}.xml`;
+    }).catch(() => []);
+    xmls = await Promise.all(files.map(f => fs.readFile(f, 'utf-8').catch(() => null)));
   }
-  const xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
   return xmls.flatMap(x => (x ? menuSubmenuNames(x) : []));
 }
 
@@ -447,7 +471,7 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   let parentNote = '';
   let canonicalParent = parent;
   if (parent) {
-    const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
+    const baseXml = await readBaseMenu(baseMenu, symbolIndex);
     const checked = await checkExtensionParent(content, extensionName, baseMenu, baseXml, parent, symbolIndex);
     if ('refusal' in checked) return { success: false, message: checked.refusal };
     canonicalParent = checked.parent;
@@ -511,7 +535,7 @@ export const directXmlAddSubmenu = serializedOnFile(async (
   if (/<AxMenuExtension\b/.test(content)) {
     const { extensionName, baseMenu } = extensionNames(content, filePath);
     menuName = baseMenu;
-    const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
+    const baseXml = await readBaseMenu(baseMenu, symbolIndex);
     const others = await otherExtensionSubmenus(baseMenu, extensionName, symbolIndex);
     if ([...(baseXml ? menuSubmenuNames(baseXml) : []), ...others].some(n => fromXmlText(n).toLowerCase() === name.toLowerCase())) {
       return {
