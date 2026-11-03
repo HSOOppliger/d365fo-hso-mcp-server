@@ -374,8 +374,9 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
  * reads an AxMenu and cannot resolve an extension name, and the AxMenu writer above
  * writes the wrong shape for one (see menuExtensionXml.ts).
  *
- * `parentMenuElement` is checked before anything is written, because a <Parent> naming no
- * submenu builds clean and the item never shows up. It may be a submenu of the base
+ * `parentMenuElement` is checked before anything is written: a <Parent> naming no submenu
+ * fails the next build (verified on a dev VM), and the refusal names the submenus that do
+ * exist while the agent can still correct the call. It may be a submenu of the base
  * menu (the extension name before the first dot), one this extension adds itself
  * (the item is then nested inside it), or one another extension of the same base
  * menu adds — shipped extensions do all three. When the name is found nowhere and
@@ -426,7 +427,7 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
         success: false,
         message:
           `Submenu '${parent}' is not in menu '${baseMenu}', nor added by ${extensionName} or another extension ` +
-          `of it in the index — nothing was written. A <Parent> naming no submenu builds clean and the item never shows up.\n` +
+          `of it in the index — nothing was written. A <Parent> naming no submenu fails the build.\n` +
           `   Submenus: ${known.length ? known.join(', ') : '(none — omit parentMenuElement for the top level)'}`,
       };
     } else {

@@ -1,6 +1,6 @@
 # feat(menu): add-menu-item-to-menu on a menu extension
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11` plus the correction in `v1.22.0-d365dev.12` (items nested in the extension's own submenus, parents from other extensions, shipped-shape fixtures). PR branch `feat/menu-extension-add-menu-item` = one commit `d433bc7c` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,749 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11` plus the corrections in `v1.22.0-d365dev.12` (items nested in the extension's own submenus, parents from other extensions, shipped-shape fixtures) and `v1.22.0-d365dev.13` (what a wrong parent does, the dev-VM test). PR branch `feat/menu-extension-add-menu-item` = one commit `00f1f54d` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,749 tests).*
 
 ## The gap
 
@@ -57,7 +57,7 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 - The same menu item under the same parent (case-insensitive) is a skip: `{ success: true, skipped: true }`, rendered as "⏭️ … SKIPPED, nothing was written". The file isn't touched.
 - A file that isn't an `AxMenuExtension`, or has no `<Elements>`, gets a specific refusal instead of the generic "object not resolved" retry.
 
-**New optional parameter `parentMenuElement`**: the submenu of the base menu the item goes under. Leave it out for the top level. It is checked before anything is written, because a `<Parent>` that names no submenu builds clean and the item never shows up.
+**New optional parameter `parentMenuElement`**: the submenu of the base menu the item goes under. Leave it out for the top level. It is checked before anything is written. A `<Parent>` that names no submenu fails the next build; the check catches it at the call instead, with the list of the submenus that do exist, so the agent can correct the call.
 - The base menu is the part of the extension name before the first dot. It is read with `findBaseObjectXml('menu', …)`.
 - Accepted: a submenu of the base menu at any depth, one this extension adds, or one another extension of the base menu adds. Shipped extensions do all three (see above). The other extensions are found in the symbol index (`symbols`, type `menu-extension`, name `<BaseMenu>.%`) and read only when the base menu and this extension don't have the name.
 - Matching is case-insensitive, and the base menu's spelling is written.
@@ -75,6 +75,7 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 
 ## Out of scope / follow-ups
 
+- **Parent check on a write-only companion:** it has no index, and `findD365FileOnDisk` looks only in the configured model, so a standard base menu is not found there and the check falls back to the warning. A lookup across the package folders would close that; together with a `menu`/`menu-extension` reader in `get_object_info`, which today has neither type (agents read the XML from disk to find a submenu).
 - **Position:** append only. The shipped values are `Begin` (27) and `AfterItem` + `PreviousSibling` (54) and nothing else; left out by choice for now.
 - **The `AxMenu` fallback** still inserts before the *first* `</Elements>`. In a menu with inline submenus (in `OrganizationAdministration` the first one closes `Workspaces`), the item lands inside the first submenu. The depth-aware matcher from this change can serve it too.
 - **Adding a submenu** (menus and menu extensions alike), together with a fix of the `menu-navigation` knowledge topic: it teaches a `<SubMenu>` field that no shipped file has, and calls `AxMenuElementMenuReference` "legacy", although every `MainMenu.*` extension uses it to hook in a module menu. Planned as a separate PR.
@@ -112,6 +113,15 @@ Also:
 - `tests/utils/toolInventory.test.ts`: `parentMenuElement` is surfaced in the op-spec registry.
 
 Against `src/` before the change: the new file fails to import, and the three new cases in the other files fail.
+
+**On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared server), against `OrganizationAdministration`:
+- a display item on the top level of a new extension;
+- an action item under the nested base submenu `EInvoice` (Setup › Electronic invoice);
+- the same call again: reported as skipped, file unchanged;
+- an item for a submenu added to the extension in the Visual Studio designer: nested inside it;
+- an output item under `Setup`;
+- build and BP check clean, and the items show up in the browser where they should;
+- a deliberately wrong parent: on the companion written with the "NOT checked" warning (see the follow-ups), and the build then fails.
 
 ## Checks
 
