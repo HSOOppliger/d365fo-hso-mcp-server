@@ -1,6 +1,6 @@
 # feat(knowledge): reserved-words topic; KW001 checks every name of a declaration list
 
-*Upstream pull request [#1183](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1183) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/reserved-word-check` (commit fe1a917b on upstream `main` 5122a30b). On `d365dev` the same change is tag `v1.22.0-d365dev.1`. The text below is the PR description as filed.*
+*Upstream pull request [#1183](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1183) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/reserved-word-check` (commit fe1a917b on upstream `main` 5122a30b, then 11194c9d and 885704d2). On `d365dev` the same change is tag `v1.22.0-d365dev.1`; the coverage-taxonomy fix (885704d2) is in `v1.22.0-d365dev.11`. The text below is the PR description as filed.*
 
 Builds on 754eb415 (KW001 on any declared type and on parameters, in 1.22.0) and leaves its approach as it is: same regexes, same `asc`/`desc` exemption, same reserved-type rule.
 
@@ -30,6 +30,7 @@ A reserved word as a `for`, `using` or `catch` variable is already caught, but t
 - **KW001, declaration lists:** after a `declRe` match that ends in `,` or `=`, the rest of the statement (up to `;`; a brace before it means it is not one) is split at top-level commas. Each later bare name, or `name = …`, is checked. Commas inside `()` and `[]` belong to an initializer.
 - **KW001, sized-string parameters:** `paramRe` accepts `str <n>` like `declRe` already does.
 - **KW001, wording:** a match right after `for (` says "loop variable"; one after `using (` or `catch (` says "variable".
+- **Coverage taxonomy:** the `declarations-scope` leaf claims `reserved-words` (`src/eval/coverage/taxonomy.ts`), so the eval-gate coverage matrix doesn't list the topic as unproven knowledge.
 - **No new word list.** `scripts/capture-compiler-facts.ts` stays the source; KW001 and the topic both follow a recapture.
 
 ## Tests
@@ -47,7 +48,7 @@ A reserved word as a `for`, `using` or `catch` variable is already caught, but t
   - the exemption, escape and reference notes are there;
   - the topic is the first answer to `reserved keywords`, `reserved words`, `keywords` and `reserved-words`.
 - `tests/fixtures/oracles/AxClass/FixtureReservedWordShapes.xml` (new): the select-expression shape from `SalesLine`/`SalesTable.lastPackingSlip` and the probe-legal names. `npm run oracle:sweep -- --dry` shows no KW001. Its one error, TST002 on `FixtureAttributeStacking.xml`, is already on `main`.
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (522 test files passed, 2 skipped; 7474 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (522 test files passed, 2 skipped; 7475 tests passed, 30 skipped). Also green: `npm run eval:knowledge-audit` and `npm run eval:coverage -- --check`.
 - **Full sweep over the shipped sources** (`npm run oracle:sweep` on a D365FO VM, this branch on `main` 5122a30b): 111,452 files, 648 MB of X++, 1,837 s. **No error-severity finding from any rule** (the bar is zero), so the declaration-list and sized-string additions raise nothing on code that compiles. KW001 has no warning severity, so the warning counts are not affected by this change.
 
 ## Checklist
