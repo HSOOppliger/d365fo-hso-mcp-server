@@ -1,6 +1,6 @@
 # feat(knowledge): reserved-words topic; KW001 checks every name of a declaration list
 
-*Upstream pull request [#1183](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1183) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/reserved-word-check` (commit fe1a917b on upstream `main` 5122a30b, then 11194c9d and 885704d2). On `d365dev` the same change is tag `v1.22.0-d365dev.1`; the coverage-taxonomy fix (885704d2) is in `v1.22.0-d365dev.11`. The text below is the PR description as filed.*
+*Upstream pull request [#1183](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1183) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/reserved-word-check` (commit fe1a917b on upstream `main` 5122a30b, then 11194c9d and 885704d2). On `d365dev` the same change is tag `v1.22.0-d365dev.1`; the two follow-ups (11194c9d, 885704d2) are in `v1.22.0-d365dev.11`. The text below is the PR description as filed.*
 
 Builds on 754eb415 (KW001 on any declared type and on parameters, in 1.22.0) and leaves its approach as it is: same regexes, same `asc`/`desc` exemption, same reserved-type rule.
 
@@ -46,7 +46,8 @@ A reserved word as a `for`, `using` or `catch` variable is already caught, but t
   - the topic lists exactly `XPP_KEYWORDS` minus the exempted words (set equality and count);
   - no word falls into "other" today;
   - the exemption, escape and reference notes are there;
-  - the topic is the first answer to `reserved keywords`, `reserved words`, `keywords` and `reserved-words`.
+  - the topic is the first answer to `reserved keywords`, `reserved words`, `keywords` and `reserved-words`;
+  - a query about one keyword (`next keyword`) still answers with that keyword's own topic.
 - `tests/fixtures/oracles/AxClass/FixtureReservedWordShapes.xml` (new): the select-expression shape from `SalesLine`/`SalesTable.lastPackingSlip` and the probe-legal names. `npm run oracle:sweep -- --dry` shows no KW001. Its one error, TST002 on `FixtureAttributeStacking.xml`, is already on `main`.
 - `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run`: green (522 test files passed, 2 skipped; 7475 tests passed, 30 skipped). Also green: `npm run eval:knowledge-audit` and `npm run eval:coverage -- --check`.
 - **Full sweep over the shipped sources** (`npm run oracle:sweep` on a D365FO VM, this branch on `main` 5122a30b): 111,452 files, 648 MB of X++, 1,837 s. **No error-severity finding from any rule** (the bar is zero), so the declaration-list and sized-string additions raise nothing on code that compiles. KW001 has no warning severity, so the warning counts are not affected by this change.
