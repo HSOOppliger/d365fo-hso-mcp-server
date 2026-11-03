@@ -376,10 +376,29 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
  *
  * `parentMenuElement` is checked before anything is written, because a <Parent> naming no
  * submenu builds clean and the item never shows up. It may be a submenu of the base
- * menu (the extension name before the first dot) or one this extension adds itself
- * — shipped extensions do both. When the base menu cannot be read, the item is
- * written with a warning that the parent went unchecked.
+ * menu (the extension name before the first dot), one this extension adds itself
+ * (the item is then nested inside it), or one another extension of the same base
+ * menu adds — shipped extensions do all three. When the name is found nowhere and
+ * the base menu could not be read, the item is written with a warning that the
+ * parent went unchecked.
  */
+/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
+async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
+  let names: string[];
+  try {
+    const rows = symbolIndex.getReadDb()
+      .prepare(`SELECT DISTINCT name FROM symbols WHERE type = 'menu-extension' AND name LIKE ?`)
+      .all(`${baseMenu}.%`) as { name: string }[];
+    // LIKE reads `_` as a wildcard, so the prefix is confirmed here.
+    names = rows.map(r => r.name).filter(n =>
+      n.toLowerCase().startsWith(`${baseMenu.toLowerCase()}.`) && n.toLowerCase() !== self.toLowerCase());
+  } catch {
+    return [];
+  }
+  const xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
+  return xmls.flatMap(x => (x ? menuSubmenuNames(x) : []));
+}
+
 export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   filePath: string,
   args: { menuItemToAdd: string; menuItemToAddType?: string; parentMenuElement?: string },
@@ -394,20 +413,21 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   let parentNote = '';
   let canonicalParent = parent;
   if (parent) {
-    const own = menuSubmenuNames(content);
     const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
-    const known = [...new Set([...(baseXml ? menuSubmenuNames(baseXml) : []), ...own])];
-    const hit = known.find(n => n.toLowerCase() === escapeXml(parent).toLowerCase());
+    let known = [...new Set([...(baseXml ? menuSubmenuNames(baseXml) : []), ...menuSubmenuNames(content)])];
+    const find = () => known.find(n => n.toLowerCase() === escapeXml(parent).toLowerCase());
+    // Only on a miss: the other extensions of the base menu are a file read each.
+    if (!find()) known = [...new Set([...known, ...await otherExtensionSubmenus(baseMenu, extensionName, symbolIndex)])];
+    const hit = find();
     if (hit) {
       canonicalParent = hit.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     } else if (baseXml) {
       return {
         success: false,
         message:
-          `Submenu '${parent}' is not in menu '${baseMenu}' nor added by ${extensionName} — nothing was written. ` +
-          `A <Parent> naming no submenu builds clean and the item never shows up.\n` +
-          `   Submenus: ${known.length ? known.join(', ') : '(none — omit parentMenuElement for the top level)'}\n` +
-          `   (A submenu added by another model's extension of '${baseMenu}' is not visible to this check.)`,
+          `Submenu '${parent}' is not in menu '${baseMenu}', nor added by ${extensionName} or another extension ` +
+          `of it in the index — nothing was written. A <Parent> naming no submenu builds clean and the item never shows up.\n` +
+          `   Submenus: ${known.length ? known.join(', ') : '(none — omit parentMenuElement for the top level)'}`,
       };
     } else {
       parentNote = `\n⚠️ Base menu '${baseMenu}' could not be read, so submenu '${parent}' was NOT checked — verify it exists.`;
@@ -415,7 +435,11 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   }
 
   const outcome = addMenuExtensionItem(content, { menuItemName, menuItemType: args.menuItemToAddType, parent: canonicalParent });
-  const where = canonicalParent ? `under submenu '${canonicalParent}'` : 'on the top level';
+  const where = !canonicalParent
+    ? 'on the top level'
+    : outcome.kind === 'added' && outcome.nested
+      ? `inside submenu '${canonicalParent}', which this extension adds,`
+      : `under submenu '${canonicalParent}'`;
   switch (outcome.kind) {
     case 'unsupported':
       return { success: false, message: `${filePath} is not an AxMenuExtension — nothing was written.` };

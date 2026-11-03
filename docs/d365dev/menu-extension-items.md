@@ -1,6 +1,6 @@
 # feat(menu): add-menu-item-to-menu on a menu extension
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11`. PR branch `feat/menu-extension-add-menu-item` = one commit `a8797308` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,743 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.11` plus the correction in `v1.22.0-d365dev.12` (items nested in the extension's own submenus, parents from other extensions, shipped-shape fixtures). PR branch `feat/menu-extension-add-menu-item` = one commit `d433bc7c` on upstream `main` `5122a30b`; not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 531 files, 7,749 tests).*
 
 ## The gap
 
@@ -36,7 +36,10 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 ```
 
 - The children of an entry come in the order `Parent?`, `PositionType?`, `PreviousSibling?`, `MenuElement`. Entry shapes: `[Parent, MenuElement]` 99, `[MenuElement]` 77, `[Parent, PositionType, PreviousSibling, MenuElement]` 59, `[PositionType, PreviousSibling, MenuElement]` 23, `[Parent, PositionType, MenuElement]` 14, `[PositionType, MenuElement]` 7.
-- `<Parent>` is a plain submenu name. None of the 112 distinct values contains a path separator. Without it, the item goes on the top level of the base menu.
+- `<Parent>` is a plain submenu name. None of the 112 distinct values contains a path separator, and nested submenus are named the same way: `OrganizationAdministration.ApplicationSuite_Extension` parents items on `SATclassifications`, which sits at depth 3 of `OrganizationAdministration` (Setup › EInvoice › SATclassifications). Without `<Parent>`, the item goes on the top level of the base menu.
+- A submenu that an extension adds itself is a `<MenuElement i:type="AxMenuElementSubMenu">` with its own `<Elements>`, and its items are **nested** there as `<AxMenuElement xmlns="">`. A sample of 43 extensions has 197 such nested items, and none written as a separate entry with `<Parent>` naming the extension's own submenu.
+- A `<Parent>` may also name a submenu that **another** extension of the same base menu adds: `GeneralLedger.AppSuite_TR_Extension` uses `PeriodEndReports` from `GeneralLedger.ApplicationSuite`, and `navpanemenu.EngChg` uses `ProductManagement` from `NavPaneMenu.ApplicationSuite`.
+- A base `AxMenu` holds its submenus inline: `<AxMenuElement xmlns="" i:type="AxMenuElementSubMenu">` with `Name`, `Label` and nested `Elements` (33 of them in `OrganizationAdministration`). There is no `<SubMenu>` field in any of the 44 files.
 - `MenuItemType` appears for Action and Output only. Display items omit it, since Display is the model default.
 - Root order: `Name, Customizations, Elements, MenuElementModifications, PropertyModifications` in 192 files, and only the first three in 32. `generateAxMenuExtensionXml` writes the first form, so the create template needs no change.
 
@@ -47,7 +50,8 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 **Dispatch** (`src/tools/write/modifyD365File.ts`): on a `menu-extension`, the switch arm skips the bridge and the `AxMenu` fallback and calls `directXmlAddMenuItemToMenuExtension`, wrapped in `viaXmlFallback`. The `menu` path is unchanged.
 
 **Writer**: `src/tools/xml/menuExtensionXml.ts` (pure, new) and the wrapper in `src/tools/write/directXmlWriters.ts` (`serializedOnFile`, `writeFileAtomic`, `normalizeD365Xml`, like its neighbours).
-- It appends the entry above at the end of the **root** `<Elements>`, whether written `<Elements />` or as an open/close pair. The root collection is matched by depth, not by the first `</Elements>`, because an entry that adds a submenu nests an `<Elements>` of its own. Existing entries stay byte-identical.
+- It appends the entry above at the end of the **root** `<Elements>`, whether written `<Elements />` or as an open/close pair. Collections are matched by depth, not by the first `</Elements>`, because an entry that adds a submenu nests an `<Elements>` of its own. Existing entries stay byte-identical.
+- When `parentMenuElement` names a submenu that this extension adds (at any depth), the item is nested at the end of that submenu's `<Elements>` instead, with no `<Parent>`, as the shipped files do.
 - `menuItemToAddType` display, action or output. Display writes no `MenuItemType`.
 - Every value is XML-escaped.
 - The same menu item under the same parent (case-insensitive) is a skip: `{ success: true, skipped: true }`, rendered as "⏭️ … SKIPPED, nothing was written". The file isn't touched.
@@ -55,7 +59,7 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 
 **New optional parameter `parentMenuElement`**: the submenu of the base menu the item goes under. Leave it out for the top level. It is checked before anything is written, because a `<Parent>` that names no submenu builds clean and the item never shows up.
 - The base menu is the part of the extension name before the first dot. It is read with `findBaseObjectXml('menu', …)`.
-- Accepted: a submenu of the base menu at any depth, or one the extension adds itself. Shipped extensions do both, e.g. `ProcurementAndSourcing.SCMCopilot` adds the `CleanUp` submenu and an item under it.
+- Accepted: a submenu of the base menu at any depth, one this extension adds, or one another extension of the base menu adds. Shipped extensions do all three (see above). The other extensions are found in the symbol index (`symbols`, type `menu-extension`, name `<BaseMenu>.%`) and read only when the base menu and this extension don't have the name.
 - Matching is case-insensitive, and the base menu's spelling is written.
 - An unknown name is refused with the list of the submenus that do exist. If the base menu can't be read, the item is written with a ⚠️ saying that the parent wasn't checked.
 
@@ -71,28 +75,31 @@ Measured over the 224 `AxMenuExtension` files in Microsoft models of a 10.0 Pack
 
 ## Out of scope / follow-ups
 
-- **Position** (`PositionType` Begin / after a `PreviousSibling`): append only for now, until there is a shipped `PreviousSibling` sample to pin the values against.
-- **Parent check across models:** a submenu that another model's extension adds to the same base menu isn't visible to the check, so such a parent is refused. The refusal says so.
-- **The `AxMenu` fallback** still inserts before the *first* `</Elements>`. In a menu with inline submenus, the item would land inside the first submenu. The root-span matcher from this change could serve it too.
-- Adding a submenu (menus and menu extensions alike), `MenuElementModifications`, and modify on menu-item extensions.
+- **Position:** append only. The shipped values are `Begin` (27) and `AfterItem` + `PreviousSibling` (54) and nothing else; left out by choice for now.
+- **The `AxMenu` fallback** still inserts before the *first* `</Elements>`. In a menu with inline submenus (in `OrganizationAdministration` the first one closes `Workspaces`), the item lands inside the first submenu. The depth-aware matcher from this change can serve it too.
+- **Adding a submenu** (menus and menu extensions alike), together with a fix of the `menu-navigation` knowledge topic: it teaches a `<SubMenu>` field that no shipped file has, and calls `AxMenuElementMenuReference` "legacy", although every `MainMenu.*` extension uses it to hook in a module menu. Planned as a separate PR.
+- `MenuElementModifications`, and modify on menu-item extensions.
 
 ## Tests
 
-`tests/tools/menuExtensionXml.test.ts` (new, 20 tests). The fixtures are shipped `AxMenuExtension` files with the objects renamed to Contoso (`RetailMain.Workspaces`, `MainMenu.Tax`), plus what create writes. Two submenu fixtures are constructed, and are labelled as such.
+`tests/tools/menuExtensionXml.test.ts` (new, 25 tests). The fixtures are shipped files with the objects renamed to Contoso: the extensions `RetailMain.Workspaces` and `MainMenu.Tax`, two entries of `AccountsPayable.Extension` and `navpanemenu.ReqDefinePlanningPolicies` (submenus the extension adds), an excerpt of the `AxMenu` `OrganizationAdministration`, plus what create writes.
 - An empty `<Elements />` gets the exact shipped entry text: tabs, `xmlns=""` resets, the attribute on its own line, no `MenuItemType` for Display.
 - The top level gets no `<Parent>`.
 - Action and Output write `MenuItemType` (also for `OUTPUT`).
 - Existing entries: the new one is appended and everything before and after it is byte-identical.
 - A root without the two modification collections.
-- An extension with a submenu that nests `<Elements>`: the item goes into the root collection.
+- An extension with a submenu that nests `<Elements>`: an item for a base-menu parent goes into the root collection.
+- An item for a submenu the extension adds is nested inside it (exact shipped text, no `<Parent>`, no new root entry), an empty `<Elements />` there is opened, and an item already nested there is skipped.
 - Skip: the same item under the same parent case-insensitively is skipped. The same item under another parent or on the top level, and a tile of that name, are not.
 - `&` and `<` are escaped, and an escaped item is recognised again.
 - Not an extension or no `<Elements>`: declined.
 - `menuSubmenuNames` finds submenus at any depth by their own `<Name>`.
 - Wrapper on temp files, with `findBaseObjectXml` mocked:
-  - CRLF without a trailing newline, and the base menu's spelling of the parent;
+  - CRLF without a trailing newline, and the base menu's spelling of a parent at depth 3;
   - an unknown parent is refused with the list and the file is unchanged;
-  - a submenu the extension adds itself is accepted;
+  - a submenu the extension adds itself takes the item nested, and the message says so;
+  - a submenu that another indexed extension adds is accepted; the extension itself and a name that only matches the `LIKE` aren't read;
+  - other extensions aren't read when the base menu has the parent;
   - an unreadable base menu gives the warning;
   - no lookup for the top level;
   - the second identical call is a skip with the file unchanged;
@@ -108,7 +115,7 @@ Against `src/` before the change: the new file fails to import, and the three ne
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (522 test files passed, 2 skipped; 7484 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (522 test files passed, 2 skipped; 7489 tests passed, 30 skipped).
 
 ## Checklist
 

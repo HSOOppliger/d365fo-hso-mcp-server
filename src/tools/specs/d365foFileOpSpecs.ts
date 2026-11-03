@@ -909,10 +909,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     note:
       'objectType="menu" or "menu-extension". An item for a STANDARD menu goes into a menu-extension ' +
       '("<BaseMenu>.<Prefix>Extension"): parentMenuElement names the submenu of the base menu it goes ' +
-      'under (e.g. "Inquiries"), omitted = top level. It is checked against the base menu and the ' +
-      'submenus this extension adds; an unknown one is refused with the list. Appended at the end of ' +
-      'its parent; the same item under the same parent again is skipped. parentMenuElement is ignored ' +
-      'on objectType="menu".',
+      'under (e.g. "Inquiries", also a nested one by its plain name), omitted = top level. It is checked ' +
+      'against the base menu and the submenus this and the other indexed extensions of it add; an ' +
+      'unknown one is refused with the list. A submenu this extension adds takes the item inside it. ' +
+      'Appended at the end of its parent; the same item under the same parent again is skipped. ' +
+      'parentMenuElement is ignored on objectType="menu".',
   },
   'modify-property': {
     required: ['propertyPath', 'propertyValue'],

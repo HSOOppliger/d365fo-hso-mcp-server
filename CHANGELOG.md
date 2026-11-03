@@ -119,10 +119,12 @@ those are called out explicitly below.
   writes an `<AxMenuExtensionElement>` with `<Parent>` and a
   `<MenuElement i:type="AxMenuElementMenuItem">`, in the shape of the shipped
   extensions (Display without `MenuItemType`), appended to the root `<Elements>`.
-  `parentMenuElement` names the submenu of the base menu; omitted, the item goes on the
-  top level. A submenu that is neither in the base menu nor added by the extension is
-  refused with the list of those that are; when the base menu cannot be read, the item
-  is written with a warning. The same item under the same parent again is a skip.
+  `parentMenuElement` names the submenu of the base menu, nested ones by their plain name;
+  omitted, the item goes on the top level. A submenu the extension adds itself takes the
+  item inside its own `<Elements>`, as shipped extensions do. A submenu that is neither in
+  the base menu nor added by this or another indexed extension of it is refused with the
+  list of those that are; when the base menu cannot be read, the item is written with a
+  warning. The same item under the same parent again is a skip.
   XML only, no bridge change; `menu` is unchanged, except that the AxMenu fallback now
   escapes the item name.
 
