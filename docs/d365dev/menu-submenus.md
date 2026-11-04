@@ -52,8 +52,22 @@ Without a parent the bridge still goes first and the writer is its fallback, as 
 ## Out of scope / follow-ups
 
 - Submenu properties other than `Label` (`ConfigurationKey`, `CountryRegionCodes`, `FeatureClass`, images), and position (`PositionType`/`PreviousSibling`).
-- The other extensions of the base menu on a write-only companion, which has no index: the parent and name checks read them from the index only, so there a submenu another extension adds is not seen. (The base menu itself is read from the package folders since #1198's follow-up commit.) A `menu`/`menu-extension` reader in `get_object_info` would also spare agents reading the XML from disk to find a submenu.
+- The other extensions of the base menu on a write-only companion, and a menu reader in `get_object_info`: see below.
 - `AxMenuElementMenuReference` (hooking a menu object into another menu) has no operation.
+
+## What comes next
+
+Two more menu changes are ready on top of this one; I'll file them one at a time after this is merged:
+
+1. **Menu checks on a write-only companion: the other extensions of the base menu**
+   ([`feat/menu-companion-lookup`](https://github.com/HSOOppliger/d365fo-hso-mcp-server/tree/feat/menu-companion-lookup)).
+   Your `d52c63ca` covers the base menu. The other extensions of it are still read from the index only, which the
+   companion does not have. That PR reads them from the package folders. To keep one package scan, it also turns
+   `findInAnyPackage` into a shared `findAotFilesInAllPackages` in `objectFileLookup.ts`, with the same root order.
+   I'm mentioning it now because it touches your code from #1198.
+2. **`get_object_info` for `menu` and `menu-extension`**
+   ([`feat/menu-reader`](https://github.com/HSOOppliger/d365fo-hso-mcp-server/tree/feat/menu-reader)),
+   so agents find submenu names without grepping PackagesLocalDirectory for the XML.
 
 ## Tests
 
