@@ -1,8 +1,8 @@
 # feat(menu): add-submenu, and items into a submenu of a menu
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.14`. PR branch `feat/menu-submenus` = one commit `be1066fb` on top of #1198's branch (`ba854436` on upstream `main` `a9094731`); not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 532 files, 7,775 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.14`. PR branch `feat/menu-submenus` = one commit `21cf2c45` on upstream `main` `acd9d8e1` (rebased after #1198 was merged; only the moved JSDoc of `directXmlAddMenuItemToMenuExtension` from #1198's follow-up commit conflicted); not yet filed. The test counts below are for the PR branch (`d365dev`: 532 files, 7,775 tests).*
 
-**Depends on #1198** (`add-menu-item-to-menu` on a menu extension): this branch builds on its `src/tools/xml/menuExtensionXml.ts` and carries its commit until #1198 is merged. Review the second commit only; after #1198 is merged the branch is rebased onto `main` and holds just this change.
+**Follows #1198** (`add-menu-item-to-menu` on a menu extension) and builds on its `src/tools/xml/menuExtensionXml.ts`.
 
 ## The gap
 
@@ -52,7 +52,7 @@ Without a parent the bridge still goes first and the writer is its fallback, as 
 ## Out of scope / follow-ups
 
 - Submenu properties other than `Label` (`ConfigurationKey`, `CountryRegionCodes`, `FeatureClass`, images), and position (`PositionType`/`PreviousSibling`).
-- The parent and name checks on a write-only companion, which has no index and so does not find a standard base menu (#1198's follow-up): a lookup across the package folders. A `menu`/`menu-extension` reader in `get_object_info` would also spare agents reading the XML from disk to find a submenu.
+- The other extensions of the base menu on a write-only companion, which has no index: the parent and name checks read them from the index only, so there a submenu another extension adds is not seen. (The base menu itself is read from the package folders since #1198's follow-up commit.) A `menu`/`menu-extension` reader in `get_object_info` would also spare agents reading the XML from disk to find a submenu.
 - `AxMenuElementMenuReference` (hooking a menu object into another menu) has no operation.
 
 ## Tests
@@ -77,7 +77,7 @@ Also:
 - `tests/tools/xpp-knowledge.test.ts`: the `submenu` topic names `add-submenu` and `parentMenuElement`, has no `<SubMenu>X` field and no "tool gap".
 - `tests/tools/d365foFileOpSpecs.test.ts` (42 operations), `tests/utils/toolInventory.test.ts`, `tests/utils/layering.test.ts`.
 
-Against the `src/` of #1198: `menuXml.test.ts` fails to load and 16 tests in the other files fail.
+Against the `src/` of `main`: 27 tests in 8 files fail.
 
 **On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared server):
 - a submenu with a label under `Setup` in an extension of `OrganizationAdministration`, then an item into it: the item is nested in the new submenu;
@@ -92,7 +92,7 @@ Also run, outside the suite, against the shipped files: a submenu at the top lev
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (534 test files passed, 2 skipped; 7804 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (536 test files passed, 2 skipped; 7812 tests passed, 30 skipped).
 
 ## Checklist
 
