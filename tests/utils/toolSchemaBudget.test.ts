@@ -208,6 +208,11 @@ const CHARS_PER_TOKEN = 4;
 // schema: objectType's "Type of the D365FO object" restated its enum, and the tool,
 // baseObjectName and modelPrefix descriptions said the same in fewer words.
 // Measured payload after: 45_076 (was 45_096). The ceiling holds.
+//
+// d365fo_file's operation enum gained add-submenu (45_090), and get_object_info's
+// objectType enum gained menu and menu-extension. Paid for in get_object_info's
+// description, which spelled out the six *-extension types its own enum already
+// lists. Measured payload after: 45_038. The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured

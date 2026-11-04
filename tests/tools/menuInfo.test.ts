@@ -1,0 +1,253 @@
+/**
+ * get_object_info for `menu` and `menu-extension` (readers/menuInfo.ts).
+ *
+ * get_object_info had neither type, so on a dev VM an agent placing an item
+ * grepped PackagesLocalDirectory for the menu XML to find a submenu. The fixtures
+ * are shipped files with the objects renamed to Contoso: an excerpt of the AxMenu
+ * OrganizationAdministration, and an extension of it shaped like
+ * OrganizationAdministration.ApplicationSuite_Extension (a submenu under a nested
+ * base submenu, items positioned after a sibling, a customization).
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import path from 'path';
+
+const files: { menu: string | null; extensions: Array<{ name: string; xml: string }> } = { menu: null, extensions: [] };
+vi.mock('../../src/utils/menuFiles.js', () => ({
+  readMenuXml: vi.fn(async () => files.menu),
+  readMenuExtensions: vi.fn(async (base: string, _idx: unknown, exclude?: string) =>
+    files.extensions.filter(e => e.name.toLowerCase().startsWith(`${base.toLowerCase()}.`) && e.name !== exclude)),
+}));
+vi.mock('../../src/utils/objectFileLookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/objectFileLookup.js')>()),
+  findD365FileOnDisk: vi.fn(async () => null),
+  findAotFilesInAllPackages: vi.fn(async () => []),
+}));
+
+import { menuExtensionInfoTool, menuInfoTool } from '../../src/tools/readers/menuInfo';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
+import { readObjectXml } from '../../src/tools/readers/objectXml';
+import { findAotFilesInAllPackages } from '../../src/utils/objectFileLookup.js';
+
+const BASE_MENU = `<?xml version="1.0" encoding="utf-8"?>
+<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ContosoMain</Name>
+	<Label>@Contoso:Main</Label>
+	<Elements>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Workspaces</Name>
+			<Label>@Contoso:Workspaces</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementTile">
+					<Name>ContosoWorkspace</Name>
+					<Tile>ContosoWorkspace</Tile>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementMenuItem">
+			<Name>ContosoSystemDate</Name>
+			<MenuItemName>ContosoSystemDate</MenuItemName>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Setup</Name>
+			<Label>@Contoso:Setup</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>ContosoParamsEntry</Name>
+					<MenuItemName>ContosoParameters</MenuItemName>
+					<MenuItemType>Action</MenuItemType>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementSubMenu">
+					<Name>EInvoice</Name>
+					<Label>@Contoso:EInvoice</Label>
+					<Elements>
+						<AxMenuElement xmlns=""
+							i:type="AxMenuElementMenuItem">
+							<Name>ContosoEInvoiceParameters</Name>
+							<MenuItemName>ContosoEInvoiceParameters</MenuItemName>
+						</AxMenuElement>
+					</Elements>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+	</Elements>
+</AxMenu>`;
+
+const EXTENSION = `<?xml version="1.0" encoding="utf-8"?>
+<AxMenuExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ContosoMain.ContosoSuite</Name>
+	<Customizations>
+		<AxMenuCustomizationElement xmlns="">
+			<Name>ContosoSystemDate</Name>
+			<Visible>No</Visible>
+		</AxMenuCustomizationElement>
+	</Customizations>
+	<Elements>
+		<AxMenuExtensionElement xmlns="">
+			<Parent>EInvoice</Parent>
+			<MenuElement xmlns=""
+				i:type="AxMenuElementSubMenu">
+				<Name>ContosoTransport</Name>
+				<Label>@Contoso:Transport</Label>
+				<Elements>
+					<AxMenuElement xmlns=""
+						i:type="AxMenuElementMenuItem">
+						<Name>ContosoTrailerType</Name>
+						<MenuItemName>ContosoTrailerType</MenuItemName>
+					</AxMenuElement>
+				</Elements>
+			</MenuElement>
+		</AxMenuExtensionElement>
+		<AxMenuExtensionElement xmlns="">
+			<Parent>EInvoice</Parent>
+			<PositionType>AfterItem</PositionType>
+			<PreviousSibling>ContosoEInvoiceParameters</PreviousSibling>
+			<MenuElement xmlns=""
+				i:type="AxMenuElementMenuItem">
+				<Name>ContosoTimeEngine</Name>
+				<MenuItemName>ContosoTimeEngine</MenuItemName>
+			</MenuElement>
+		</AxMenuExtensionElement>
+		<AxMenuExtensionElement xmlns="">
+			<PositionType>Begin</PositionType>
+			<MenuElement xmlns=""
+				i:type="AxMenuElementMenuReference">
+				<Name>ContosoTax</Name>
+				<MenuName>ContosoTax</MenuName>
+			</MenuElement>
+		</AxMenuExtensionElement>
+	</Elements>
+	<MenuElementModifications />
+	<PropertyModifications />
+</AxMenuExtension>`;
+
+const OTHER_EXTENSION = `<?xml version="1.0" encoding="utf-8"?>
+<AxMenuExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ContosoMain.ContosoNumbers</Name>
+	<Customizations />
+	<Elements>
+		<AxMenuExtensionElement xmlns="">
+			<Parent>Setup</Parent>
+			<MenuElement xmlns=""
+				i:type="AxMenuElementMenuItem">
+				<Name>ContosoNumberSeq</Name>
+				<MenuItemName>ContosoNumberSeq</MenuItemName>
+			</MenuElement>
+		</AxMenuExtensionElement>
+	</Elements>
+</AxMenuExtension>`;
+
+const req = (args: Record<string, unknown>) => ({ method: 'tools/call', params: { name: 'x', arguments: args } }) as any;
+const text = (r: any): string => r.content[0].text;
+
+beforeEach(() => {
+  files.menu = BASE_MENU;
+  files.extensions = [
+    { name: 'ContosoMain.ContosoSuite', xml: EXTENSION },
+    { name: 'ContosoMain.ContosoNumbers', xml: OTHER_EXTENSION },
+  ];
+});
+
+describe('menu reader', () => {
+  it('renders the tree with depth, labels, item targets and kinds, and counts', async () => {
+    const t = text(await menuInfoTool(req({ name: 'ContosoMain' }), {} as any));
+    expect(t).toContain('# AxMenu: `ContosoMain`');
+    expect(t).toContain('**Label:** @Contoso:Main');
+    expect(t).toContain('**Submenus:** 3 · **Items:** 4');
+    expect(t).toContain(
+      '- 📁 **Setup** — @Contoso:Setup\n' +
+      '  - ContosoParamsEntry → ContosoParameters (Action)\n' +
+      '  - 📁 **EInvoice** — @Contoso:EInvoice\n' +
+      '    - ContosoEInvoiceParameters\n',
+    );
+    expect(t).toContain('  - tile ContosoWorkspace');
+  });
+
+  it('submenusOnly gives the submenu tree with an item count each', async () => {
+    const t = text(await menuInfoTool(req({ name: 'ContosoMain', submenusOnly: true }), {} as any));
+    expect(t).toContain('## Submenus');
+    expect(t).toContain('- 📁 **Workspaces** — @Contoso:Workspaces (1 item)\n- 📁 **Setup** — @Contoso:Setup (1 item)\n  - 📁 **EInvoice** — @Contoso:EInvoice (1 item)');
+    expect(t).not.toContain('ContosoSystemDate');
+  });
+
+  it('summarises the extensions: items, and the submenus they add with their parent', async () => {
+    const t = text(await menuInfoTool(req({ name: 'ContosoMain' }), {} as any));
+    expect(t).toContain('## Extensions (2)');
+    expect(t).toContain('- `ContosoMain.ContosoSuite`: 3 items; adds submenu ContosoTransport (under EInvoice)');
+    expect(t).toContain('- `ContosoMain.ContosoNumbers`: 1 item');
+    expect(t).toContain('parentMenuElement');
+  });
+
+  it('says where it looked when the menu is not found', async () => {
+    files.menu = null;
+    const r = await menuInfoTool(req({ name: 'ContosoNope' }), {} as any);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('not in the index, the configured model or any package folder');
+  });
+});
+
+describe('menu-extension reader', () => {
+  it('a full name shows that extension: parent, position, nested items, customizations', async () => {
+    const t = text(await menuExtensionInfoTool(req({ name: 'contosomain.contososuite' }), {} as any));
+    expect(t).toContain('# AxMenuExtension: `ContosoMain.ContosoSuite` (extends `ContosoMain`)');
+    expect(t).toContain('**Submenus added:** 1 · **Items added:** 3');
+    expect(t).toContain(
+      '- under **EInvoice**:\n' +
+      '  - 📁 **ContosoTransport** — @Contoso:Transport\n' +
+      '    - ContosoTrailerType\n' +
+      '- under **EInvoice**, after ContosoEInvoiceParameters:\n' +
+      '  - ContosoTimeEngine\n' +
+      '- top level, first:\n' +
+      '  - ↪ menu ContosoTax\n',
+    );
+    expect(t).toContain('- changes to base elements: ContosoSystemDate (Visible=No)');
+    expect(t).not.toContain('ContosoNumbers');
+  });
+
+  it('a base name lists every extension of the menu', async () => {
+    const t = text(await menuExtensionInfoTool(req({ name: 'ContosoMain' }), {} as any));
+    expect(t).toContain('# Extensions of menu `ContosoMain` (2)');
+    expect(t).toContain('## AxMenuExtension: `ContosoMain.ContosoSuite`');
+    expect(t).toContain('## AxMenuExtension: `ContosoMain.ContosoNumbers`');
+  });
+
+  it('not found, for one extension and for a menu without any', async () => {
+    expect(text(await menuExtensionInfoTool(req({ name: 'ContosoMain.Nope' }), {} as any))).toContain('Menu extension "ContosoMain.Nope" not found');
+    expect(text(await menuExtensionInfoTool(req({ name: 'ContosoOther' }), {} as any))).toContain('No extension of menu "ContosoOther" found');
+  });
+});
+
+describe('through get_object_info', () => {
+  it('accepts objectType menu and menu-extension, options passed through', async () => {
+    const m = await getObjectInfoTool(req({ objectType: 'menu', name: 'ContosoMain', options: { submenusOnly: true } }), {} as any);
+    expect(m.isError).toBeFalsy();
+    expect(text(m)).toContain('## Submenus');
+    const e = await getObjectInfoTool(req({ objectType: 'menu-extension', name: 'ContosoMain.ContosoNumbers' }), {} as any);
+    expect(text(e)).toContain('under **Setup**');
+  });
+
+  it('include:"xml" finds a menu in the package folders when neither the model nor the index has it', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'menu-xml-'));
+    try {
+      const f = path.join(dir, 'ContosoMain.xml');
+      await fs.writeFile(f, BASE_MENU, 'utf-8');
+      vi.mocked(findAotFilesInAllPackages).mockImplementation(async (folder: string, match: (n: string) => boolean) =>
+        folder === 'AxMenu' && match('ContosoMain.xml') ? [f] : []);
+      const r = await readObjectXml('menu', 'contosomain', {});
+      expect(r.isError).toBe(false);
+      expect(r.text).toContain(`**File:** ${f}`);
+      expect(r.text).toContain('<Name>ContosoMain</Name>');
+    } finally {
+      vi.mocked(findAotFilesInAllPackages).mockReset();
+      vi.mocked(findAotFilesInAllPackages).mockResolvedValue([]);
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});

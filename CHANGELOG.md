@@ -141,6 +141,17 @@ those are called out explicitly below.
   item inside that submenu, and it skips an item already in the target collection. The
   knowledge topic now shows the inline shape, `AxMenuElementMenuReference` for menu
   objects, and the two operations instead of hand-written XML.
+- **`get_object_info` for `menu` and `menu-extension`.** It had neither type, so an agent
+  placing an item had no tool to find a submenu: on a dev VM it grepped
+  PackagesLocalDirectory for the menu XML and read it raw. `objectType="menu"` renders the
+  menu as a tree of submenus (with label) and items (with their menu item and kind), with a
+  count, and a line per extension of the menu: how many items it adds and which submenus,
+  under which parent. `{"submenusOnly": true}` gives the submenu tree alone with an item
+  count each. `objectType="menu-extension"` takes a full extension name (that one) or a
+  base menu name (all of them) and lists each entry under its parent, with its position,
+  nested items and the customizations of base elements. Both read through the index, the
+  configured model and then every package folder, so a write-only companion reads standard
+  menus too; `{"include": "xml"}` falls back to the package folders for both types as well.
 
 ### Fixed
 - **Menu checks on a write-only companion.** The parent check of `add-menu-item-to-menu`
