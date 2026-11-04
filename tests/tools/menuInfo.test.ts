@@ -236,7 +236,43 @@ describe('menu-extension reader', () => {
   });
 });
 
-describe('on a read-only server (no AOT files, no menus in the index)', () => {
+describe('extensions the index knows but whose file was not read', () => {
+  beforeEach(() => {
+    files.indexed = [
+      { name: 'contosomain.contososuite', model: 'ContosoSuite' }, // read, in another casing
+      { name: 'ContosoMain.ContosoNumbers', model: 'ContosoCore' },
+      { name: 'ContosoMain.ApplicationSuite_Extension', model: 'ApplicationSuite' },
+    ];
+  });
+
+  it('a base name: counted in the heading and listed above the extensions, with the companion on a read-only server', async () => {
+    mode.value = 'read-only';
+    const t = text(await menuExtensionInfoTool(req({ name: 'ContosoMain' }), {} as any));
+    expect(t).toContain(
+      '# Extensions of menu `ContosoMain` (2 of 3 read)\n\n' +
+      '**Not read (1):** known to the index, but this server has no copy of their files:\n' +
+      '- ContosoMain.ApplicationSuite_Extension (model ApplicationSuite)\n' +
+      'Read them with get_object_info(objectType="menu-extension", name="<extension>") on the local companion (d365fo-local).\n\n' +
+      '## AxMenuExtension: `ContosoMain.ContosoSuite`',
+    );
+  });
+
+  it('the menu reader counts and lists them too; a server with files names no companion', async () => {
+    const t = text(await menuInfoTool(req({ name: 'ContosoMain' }), {} as any));
+    expect(t).toContain('## Extensions (2 of 3 read)\n\n**Not read (1):**');
+    expect(t).toContain('- ContosoMain.ApplicationSuite_Extension (model ApplicationSuite)\n\n- `ContosoMain.ContosoSuite`');
+    expect(t).not.toContain('d365fo-local');
+  });
+
+  it('nothing to say when every indexed extension was read, or for one extension by name', async () => {
+    files.indexed = files.indexed.slice(0, 2);
+    expect(text(await menuExtensionInfoTool(req({ name: 'ContosoMain' }), {} as any))).toContain('# Extensions of menu `ContosoMain` (2)\n\n## AxMenuExtension');
+    files.indexed.push({ name: 'ContosoMain.ApplicationSuite_Extension', model: 'ApplicationSuite' });
+    expect(text(await menuExtensionInfoTool(req({ name: 'ContosoMain.ContosoSuite' }), {} as any))).not.toContain('Not read');
+  });
+});
+
+describe('on a read-only server (no copy of the files, no menus in the index)', () => {
   it('says why it cannot read the menu and points to the companion, without "not found" guidance', async () => {
     mode.value = 'read-only';
     files.menu = null;
@@ -244,7 +280,7 @@ describe('on a read-only server (no AOT files, no menus in the index)', () => {
     // Through get_object_info: a "not found" text would get the search/update_symbol_index block appended.
     const r = await getObjectInfoTool(req({ objectType: 'menu', name: 'OrganizationAdministration' }), {} as any);
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain('cannot be read on this server: a read-only server has no AOT files');
+    expect(text(r)).toContain('cannot be read on this server: it has no copy of the file');
     expect(text(r)).toContain('d365fo-local');
     expect(text(r)).not.toContain('update_symbol_index');
     for (const name of ['OrganizationAdministration.ContosoExt', 'OrganizationAdministration']) {

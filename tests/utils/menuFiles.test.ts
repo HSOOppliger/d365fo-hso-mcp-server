@@ -1,8 +1,9 @@
 /**
  * indexedMenuExtensions — the extensions of a menu the index knows, without a file.
  *
- * On the shared read-only server (no AOT files) these names are all there is to
- * say about a menu's extensions; the menu readers list them there.
+ * On the shared read-only server, which has the files of some models only, these
+ * names are all there is to say about the extensions it cannot read; the menu
+ * readers list them there.
  */
 import { describe, it, expect } from 'vitest';
 import { indexedMenuExtensions } from '../../src/utils/menuFiles.js';

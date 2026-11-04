@@ -24,11 +24,13 @@ const MenuInfoArgsSchema = z.object({
 });
 
 /**
- * Why nothing was read. A read-only server (the shared one in the hybrid setup) has
- * no AOT files, and its index keeps no menu XML — the full build indexes no menus,
- * and the stored copies leave them out — so "not found" would send the caller to
- * search and update_symbol_index for an object that exists. The local companion has
- * the files. Worded without "not found", which would append that very guidance.
+ * Why nothing was read. A read-only server (the shared one in the hybrid setup)
+ * reads only the files its index points to and still finds on its disk — the source
+ * of some models, not the standard packages — and its index keeps no menu XML: the
+ * full build indexes no menus, and the stored copies leave them out. "Not found"
+ * would send the caller to search and update_symbol_index for an object that
+ * exists. The local companion has the files. Worded without "not found", which
+ * would append that very guidance.
  *
  * What the index does know there is which extensions a menu has (the full build
  * indexes menu extensions by name, not their content), so that list goes along:
@@ -37,7 +39,7 @@ const MenuInfoArgsSchema = z.object({
 function unreadable(what: string, baseMenu: string, symbolIndex: unknown): string {
   if (SERVER_MODE === 'read-only') {
     const known = indexedMenuExtensions(baseMenu, symbolIndex);
-    return `❌ ${what} cannot be read on this server: a read-only server has no AOT files, and its index keeps ` +
+    return `❌ ${what} cannot be read on this server: it has no copy of the file, and its index keeps ` +
       `no menu XML. Read it with get_object_info on the local companion (d365fo-local), which reads the ` +
       `files on the dev VM.` +
       (known.length
@@ -47,6 +49,33 @@ function unreadable(what: string, baseMenu: string, symbolIndex: unknown): strin
   }
   return `${what} not found — not in the index, the configured model or any package folder.`;
 }
+
+/**
+ * The extensions of `baseMenu` the index knows but whose file was not read. On the
+ * shared server the index points into the source of every model, but only some of
+ * it is on that disk (custom models, not Microsoft's): on a dev VM a menu's custom
+ * extensions came back as "Extensions of menu (5)", Microsoft's left out without a
+ * word, and a partial list reads as the whole one. Above the rendered extensions,
+ * so the 400-line cut keeps it.
+ */
+function notRead(baseMenu: string, read: Array<{ name: string }>, symbolIndex: unknown): { count: number; lines: string[] } {
+  const have = new Set(read.map(e => e.name.toLowerCase()));
+  const missing = indexedMenuExtensions(baseMenu, symbolIndex).filter(k => !have.has(k.name.toLowerCase()));
+  if (missing.length === 0) return { count: 0, lines: [] };
+  return {
+    count: missing.length,
+    lines: [
+      `**Not read (${missing.length}):** known to the index, but this server has no copy of their files:`,
+      ...missing.map(k => `- ${k.name} (model ${k.model})`),
+      ...(SERVER_MODE === 'read-only'
+        ? ['Read them with get_object_info(objectType="menu-extension", name="<extension>") on the local companion (d365fo-local).']
+        : []),
+      '',
+    ],
+  };
+}
+
+const readOf = (read: number, unread: number) => (unread ? `${read} of ${read + unread} read` : `${read}`);
 
 /** Above this many lines the tree is cut, with a pointer to submenusOnly. */
 const MAX_LINES = 400;
@@ -184,6 +213,7 @@ export async function menuInfoTool(request: CallToolRequest, context: XppServerC
       for (const c of directChildren(xml, elements.openEnd)) renderElement(xml, c, 0, tree, counts, !!args.submenusOnly);
     }
     const extensions = await readMenuExtensions(name, context.symbolIndex);
+    const unread = notRead(name, extensions, context.symbolIndex);
 
     const lines = [
       `# AxMenu: \`${name}\``,
@@ -195,8 +225,9 @@ export async function menuInfoTool(request: CallToolRequest, context: XppServerC
       '',
       ...(tree.length ? tree : ['*(empty)*']),
       '',
-      `## Extensions (${extensions.length})`,
+      `## Extensions (${readOf(extensions.length, unread.count)})`,
       '',
+      ...unread.lines,
       ...(extensions.length
         ? [...extensions.map(e => extensionSummary(e.name, e.xml)),
            '', `Entries of one: get_object_info(objectType="menu-extension", name="<extension>"); all: name="${name}".`]
@@ -233,7 +264,8 @@ export async function menuExtensionInfoTool(request: CallToolRequest, context: X
     }
     // The base menu as the extensions spell it, not as the caller typed it.
     const baseMenu = shown[0].name.split('.')[0];
-    const lines: string[] = single ? [] : [`# Extensions of menu \`${baseMenu}\` (${shown.length})`, ''];
+    const unread = single ? { count: 0, lines: [] } : notRead(baseMenu, shown, context.symbolIndex);
+    const lines: string[] = single ? [] : [`# Extensions of menu \`${baseMenu}\` (${readOf(shown.length, unread.count)})`, '', ...unread.lines];
     for (const e of shown) {
       const counts: Counts = { submenus: 0, items: 0 };
       const body: string[] = [];

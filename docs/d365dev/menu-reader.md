@@ -1,6 +1,6 @@
 # feat(menu): get_object_info reads menus and menu extensions
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.16` plus `v1.22.0-d365dev.17` and `.18` (the answer on a read-only server, with the extensions the index knows). PR branch `feat/menu-reader` = one commit `6e236097` on top of the companion-lookup branch (`6e319943` → add-submenu `be1066fb` → #1198 `ba854436`, on upstream `main` `a9094731`); pushed to the fork, not yet filed. The test counts below are for the PR branch (`d365dev`: 535 files, 7,798 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.16` plus `.17` and `.18` (the answer on a read-only server, with the extensions the index knows) and `.19` (extensions the index knows but whose file was not read). PR branch `feat/menu-reader` = one commit `9dd2015b` on top of the companion-lookup branch (`6e319943` → add-submenu `be1066fb` → #1198 `ba854436`, on upstream `main` `a9094731`); pushed to the fork, not yet filed. The test counts below are for the PR branch (`d365dev`: 535 files, 7,801 tests).*
 
 **Depends on #1198, the add-submenu PR and the companion-lookup PR:** it uses `findAotFilesInAllPackages` from the last and moves its menu lookups into a shared util. Review the last commit only; the branch is rebased onto `main` as the others are merged.
 
@@ -29,7 +29,9 @@ The write operations take a submenu by its plain name (`parentMenuElement`), so 
 
 Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single extension.
 
-**On a read-only server** (the shared server of the hybrid setup) there is nothing to read: it has no AOT files, the full index build indexes no menus, and the stored copies (`object_source`) leave menus out. Both readers then say exactly that and point to the local companion (`get_object_info` on `d365fo-local`), worded without "not found" so `get_object_info` does not append its `search` / `update_symbol_index` guidance — which on a dev VM sent the agent looking for an object that exists. What the index does know there is which extensions a menu has (the full build indexes menu extensions by name), so the answer lists them with their model (`indexedMenuExtensions` in `menuFiles.ts`): "which extensions does Organization administration have?" is answered by the shared server itself.
+**On a read-only server** (the shared server of the hybrid setup) only part can be read. It reads the files its index points to and still finds on its own disk: the source of the custom models the index was built from, but not the standard packages. The full index build indexes no menus, and the stored copies (`object_source`) leave menus out, so a base menu is never readable there; its custom extensions are.
+- When nothing can be read, both readers say so and point to the local companion (`get_object_info` on `d365fo-local`). The wording avoids "not found", so `get_object_info` does not append its `search` / `update_symbol_index` guidance — which on a dev VM sent the agent looking for an object that exists. What the index does know there is which extensions a menu has (the full build indexes menu extensions by name), so the answer lists them with their model (`indexedMenuExtensions` in `menuFiles.ts`): "which extensions does Organization administration have?" is answered by the shared server itself.
+- When only some extensions can be read, the readers count the rest in the heading (`# Extensions of menu … (5 of 7 read)`) and list them by name and model above the rendered ones, on a read-only server with the pointer to the companion. Without that, on a dev VM the shared server answered "Extensions of menu `OrganizationAdministration` (5)" with the custom extensions only, Microsoft's left out without a word, and the agent took it as the whole list.
 
 **Lookup** (`src/utils/menuFiles.ts`, new): `readMenuXml` and `readMenuExtensions` — index, configured model, then every package folder (the companion-lookup PR's `findAotFilesInAllPackages`), so a write-only companion reads standard menus. The menu-extension writers' `readBaseMenu`/`otherExtensionSubmenus` moved there unchanged and both writers and readers use them.
 
@@ -45,7 +47,7 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 
 ## Tests
 
-`tests/tools/menuInfo.test.ts` (new, 13 tests), with Contoso fixtures shaped like the shipped `OrganizationAdministration` and `OrganizationAdministration.ApplicationSuite_Extension` (the lookup mocked):
+`tests/tools/menuInfo.test.ts` (new, 16 tests), with Contoso fixtures shaped like the shipped `OrganizationAdministration` and `OrganizationAdministration.ApplicationSuite_Extension` (the lookup mocked):
 - the tree: depth, labels, an item whose element name differs from its menu item, an Action item, a tile; counts;
 - `submenusOnly`: the submenu tree with an item count each, no items;
 - the extension summary: item counts and added submenus with their parent;
@@ -53,7 +55,8 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 - `menu-extension` with a full name (any casing): parent, `after <sibling>`, `first`, a nested item, a menu reference, a customization, and the base menu in the extension's own spelling; with a base name: every extension; not found for both forms;
 - through `get_object_info`: both types accepted, options passed through;
 - `include:"xml"` finds a menu in the package folders when neither the configured model nor the index has it;
-- on a read-only server, both types (and a base name for `menu-extension`) say they cannot be read there and point to the companion, with no `update_symbol_index` guidance, and list the extensions the index knows with their model; with files, "not found" stays and no index names are listed.
+- on a read-only server, both types (and a base name for `menu-extension`) say they cannot be read there and point to the companion, with no `update_symbol_index` guidance, and list the extensions the index knows with their model; with files, "not found" stays and no index names are listed;
+- extensions the index knows but whose file was not read (matched in any casing): counted in the heading and listed above the rendered ones, by both readers, with the companion pointer on a read-only server only; nothing added when every one was read, or for a single extension by name.
 
 `tests/utils/menuFiles.test.ts` (new, 2 tests): `indexedMenuExtensions` queries `menu-extension` rows by prefix and drops a name that only matches the `LIKE` (`_` as a wildcard); empty without an index.
 
@@ -73,7 +76,7 @@ Rendered against the shipped files (outside the suite): `OrganizationAdministrat
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (537 test files passed, 2 skipped; 7827 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (537 test files passed, 2 skipped; 7830 tests passed, 30 skipped).
 
 ## Checklist
 

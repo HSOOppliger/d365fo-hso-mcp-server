@@ -55,8 +55,8 @@ export async function readMenuExtensions(
 
 /**
  * The extensions of `baseMenu` the index knows — name and model — without reading a
- * file. A read-only server has the index rows but none of the files, so this is all
- * it can say about them; empty when there is no index.
+ * file. A read-only server has the index rows but the files of some models only, so
+ * for the rest this is all it can say; empty when there is no index.
  */
 export function indexedMenuExtensions(baseMenu: string, symbolIndex: any): Array<{ name: string; model: string }> {
   try {
