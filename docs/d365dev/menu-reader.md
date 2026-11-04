@@ -59,6 +59,14 @@ The writer tests (`menuExtensionXml.test.ts`) pass unchanged on the moved lookup
 
 Against the `src/` of the companion-lookup PR: `menuInfo.test.ts` fails to load.
 
+**On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared read-only server), asked in plain words without naming a server:
+- the submenus of Organization administration;
+- what an extension of it adds;
+- the raw XML of `OrganizationAdministration`;
+- an item under `EInvoice` (the agent found the submenu through the reader before writing).
+
+In each case the agent asked the shared server first, got the "cannot be read on this server … d365fo-local" answer, and read the menu on the companion. It no longer searched the file system. Before the read-only answer, the shared server said "not found" with its search guidance, and the agent set out to grep PackagesLocalDirectory instead.
+
 Rendered against the shipped files (outside the suite): `OrganizationAdministration` (33 submenus, 150 elements) with both of its extensions, and `OrganizationAdministration.ApplicationSuite_Extension` on its own, read as expected.
 
 ## Checks
