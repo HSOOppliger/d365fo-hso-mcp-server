@@ -152,6 +152,8 @@ those are called out explicitly below.
   nested items and the customizations of base elements. Both read through the index, the
   configured model and then every package folder, so a write-only companion reads standard
   menus too; `{"include": "xml"}` falls back to the package folders for both types as well.
+  A read-only server has no AOT files and its index keeps no menu XML, so there it says
+  so and points to the local companion, instead of "not found" with search advice.
 
 ### Fixed
 - **Menu checks on a write-only companion.** The parent check of `add-menu-item-to-menu`

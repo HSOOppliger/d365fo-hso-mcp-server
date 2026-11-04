@@ -19,6 +19,11 @@ vi.mock('../../src/utils/menuFiles.js', () => ({
   readMenuExtensions: vi.fn(async (base: string, _idx: unknown, exclude?: string) =>
     files.extensions.filter(e => e.name.toLowerCase().startsWith(`${base.toLowerCase()}.`) && e.name !== exclude)),
 }));
+const mode = { value: 'full' as string };
+vi.mock('../../src/server/serverMode.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/server/serverMode.js')>()),
+  get SERVER_MODE() { return mode.value; },
+}));
 vi.mock('../../src/utils/objectFileLookup.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/utils/objectFileLookup.js')>()),
   findD365FileOnDisk: vi.fn(async () => null),
@@ -148,6 +153,7 @@ const req = (args: Record<string, unknown>) => ({ method: 'tools/call', params: 
 const text = (r: any): string => r.content[0].text;
 
 beforeEach(() => {
+  mode.value = 'full';
   files.menu = BASE_MENU;
   files.extensions = [
     { name: 'ContosoMain.ContosoSuite', xml: EXTENSION },
@@ -221,6 +227,31 @@ describe('menu-extension reader', () => {
   it('not found, for one extension and for a menu without any', async () => {
     expect(text(await menuExtensionInfoTool(req({ name: 'ContosoMain.Nope' }), {} as any))).toContain('Menu extension "ContosoMain.Nope" not found');
     expect(text(await menuExtensionInfoTool(req({ name: 'ContosoOther' }), {} as any))).toContain('No extension of menu "ContosoOther" found');
+  });
+});
+
+describe('on a read-only server (no AOT files, no menus in the index)', () => {
+  it('says why it cannot read the menu and points to the companion, without "not found" guidance', async () => {
+    mode.value = 'read-only';
+    files.menu = null;
+    files.extensions = [];
+    // Through get_object_info: a "not found" text would get the search/update_symbol_index block appended.
+    const r = await getObjectInfoTool(req({ objectType: 'menu', name: 'OrganizationAdministration' }), {} as any);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('cannot be read on this server: a read-only server has no AOT files');
+    expect(text(r)).toContain('d365fo-local');
+    expect(text(r)).not.toContain('update_symbol_index');
+    for (const name of ['OrganizationAdministration.ContosoExt', 'OrganizationAdministration']) {
+      const e = await getObjectInfoTool(req({ objectType: 'menu-extension', name }), {} as any);
+      expect(text(e)).toContain('cannot be read on this server');
+      expect(text(e)).not.toContain('update_symbol_index');
+    }
+  });
+
+  it('a server with files still says not found, with the guidance', async () => {
+    files.menu = null;
+    const r = await getObjectInfoTool(req({ objectType: 'menu', name: 'ContosoNope' }), {} as any);
+    expect(text(r)).toContain('not found — not in the index, the configured model or any package folder');
   });
 });
 

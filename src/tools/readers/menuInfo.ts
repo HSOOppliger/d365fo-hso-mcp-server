@@ -13,6 +13,7 @@
  */
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { SERVER_MODE } from '../../server/serverMode.js';
 import type { XppServerContext } from '../../types/context.js';
 import { readMenuExtensions, readMenuXml } from '../../utils/menuFiles.js';
 import { type ElementSpan, child, childText, directChildren, iType } from '../xml/menuExtensionXml.js';
@@ -21,6 +22,22 @@ const MenuInfoArgsSchema = z.object({
   name: z.string().describe('Menu name, or for menu-extension a base menu name or a full extension name (Base.Suffix)'),
   submenusOnly: z.boolean().optional().describe('true = the submenu tree only, with an item count per submenu'),
 });
+
+/**
+ * Why nothing was read. A read-only server (the shared one in the hybrid setup) has
+ * no AOT files, and its index keeps no menu XML — the full build indexes no menus,
+ * and the stored copies leave them out — so "not found" would send the caller to
+ * search and update_symbol_index for an object that exists. The local companion has
+ * the files. Worded without "not found", which would append that very guidance.
+ */
+function unreadable(what: string): string {
+  if (SERVER_MODE === 'read-only') {
+    return `❌ ${what} cannot be read on this server: a read-only server has no AOT files, and its index keeps ` +
+      `no menu XML. Read it with get_object_info on the local companion (d365fo-local), which reads the ` +
+      `files on the dev VM.`;
+  }
+  return `${what} not found — not in the index, the configured model or any package folder.`;
+}
 
 /** Above this many lines the tree is cut, with a pointer to submenusOnly. */
 const MAX_LINES = 400;
@@ -144,7 +161,7 @@ export async function menuInfoTool(request: CallToolRequest, context: XppServerC
     const xml = await readMenuXml(args.name, context.symbolIndex);
     if (!xml) {
       return {
-        content: [{ type: 'text', text: `Menu "${args.name}" not found — not in the index, the configured model or any package folder.` }],
+        content: [{ type: 'text', text: unreadable(`Menu "${args.name}"`) }],
         isError: true,
       };
     }
@@ -198,8 +215,10 @@ export async function menuExtensionInfoTool(request: CallToolRequest, context: X
     if (shown.length === 0) {
       return {
         content: [{ type: 'text', text: single
-          ? `Menu extension "${args.name}" not found — not in the index, the configured model or any package folder.`
-          : `No extension of menu "${asGiven}" found — not in the index, the configured model or any package folder.` }],
+          ? unreadable(`Menu extension "${args.name}"`)
+          : SERVER_MODE === 'read-only'
+            ? unreadable(`The extensions of menu "${asGiven}"`)
+            : `No extension of menu "${asGiven}" found — not in the index, the configured model or any package folder.` }],
         isError: true,
       };
     }
