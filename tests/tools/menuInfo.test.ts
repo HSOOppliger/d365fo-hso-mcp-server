@@ -13,8 +13,13 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import path from 'path';
 
-const files: { menu: string | null; extensions: Array<{ name: string; xml: string }> } = { menu: null, extensions: [] };
+const files: {
+  menu: string | null;
+  extensions: Array<{ name: string; xml: string }>;
+  indexed: Array<{ name: string; model: string }>;
+} = { menu: null, extensions: [], indexed: [] };
 vi.mock('../../src/utils/menuFiles.js', () => ({
+  indexedMenuExtensions: vi.fn(() => files.indexed),
   readMenuXml: vi.fn(async () => files.menu),
   readMenuExtensions: vi.fn(async (base: string, _idx: unknown, exclude?: string) =>
     files.extensions.filter(e => e.name.toLowerCase().startsWith(`${base.toLowerCase()}.`) && e.name !== exclude)),
@@ -154,6 +159,7 @@ const text = (r: any): string => r.content[0].text;
 
 beforeEach(() => {
   mode.value = 'full';
+  files.indexed = [];
   files.menu = BASE_MENU;
   files.extensions = [
     { name: 'ContosoMain.ContosoSuite', xml: EXTENSION },
@@ -246,6 +252,32 @@ describe('on a read-only server (no AOT files, no menus in the index)', () => {
       expect(text(e)).toContain('cannot be read on this server');
       expect(text(e)).not.toContain('update_symbol_index');
     }
+  });
+
+  it('lists the extensions the index knows, names and models, since it has no files', async () => {
+    mode.value = 'read-only';
+    files.menu = null;
+    files.extensions = [];
+    files.indexed = [
+      { name: 'OrganizationAdministration.ContosoSuite', model: 'ContosoSuite' },
+      { name: 'OrganizationAdministration.ContosoNumbers', model: 'ContosoCore' },
+    ];
+    const list =
+      'The index knows these extensions of menu "OrganizationAdministration" (names only, not their entries):\n' +
+      '- OrganizationAdministration.ContosoSuite (model ContosoSuite)\n' +
+      '- OrganizationAdministration.ContosoNumbers (model ContosoCore)';
+    const viaExt = await getObjectInfoTool(req({ objectType: 'menu-extension', name: 'OrganizationAdministration' }), {} as any);
+    expect(text(viaExt)).toContain('❌ The entries of the extensions of menu "OrganizationAdministration" cannot be read on this server');
+    expect(text(viaExt)).toContain(list);
+    const viaMenu = await getObjectInfoTool(req({ objectType: 'menu', name: 'OrganizationAdministration' }), {} as any);
+    expect(text(viaMenu)).toContain(list);
+    expect(text(viaMenu)).not.toContain('update_symbol_index');
+  });
+
+  it('a server with files does not list index names on a miss', async () => {
+    files.menu = null;
+    files.indexed = [{ name: 'ContosoNope.X', model: 'M' }];
+    expect(text(await menuInfoTool(req({ name: 'ContosoNope' }), {} as any))).not.toContain('The index knows');
   });
 
   it('a server with files still says not found, with the guidance', async () => {

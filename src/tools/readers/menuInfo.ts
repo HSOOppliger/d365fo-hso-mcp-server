@@ -15,7 +15,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { SERVER_MODE } from '../../server/serverMode.js';
 import type { XppServerContext } from '../../types/context.js';
-import { readMenuExtensions, readMenuXml } from '../../utils/menuFiles.js';
+import { indexedMenuExtensions, readMenuExtensions, readMenuXml } from '../../utils/menuFiles.js';
 import { type ElementSpan, child, childText, directChildren, iType } from '../xml/menuExtensionXml.js';
 
 const MenuInfoArgsSchema = z.object({
@@ -29,12 +29,21 @@ const MenuInfoArgsSchema = z.object({
  * and the stored copies leave them out — so "not found" would send the caller to
  * search and update_symbol_index for an object that exists. The local companion has
  * the files. Worded without "not found", which would append that very guidance.
+ *
+ * What the index does know there is which extensions a menu has (the full build
+ * indexes menu extensions by name, not their content), so that list goes along:
+ * "which extensions does this menu have?" is answerable on the shared server.
  */
-function unreadable(what: string): string {
+function unreadable(what: string, baseMenu: string, symbolIndex: unknown): string {
   if (SERVER_MODE === 'read-only') {
+    const known = indexedMenuExtensions(baseMenu, symbolIndex);
     return `❌ ${what} cannot be read on this server: a read-only server has no AOT files, and its index keeps ` +
       `no menu XML. Read it with get_object_info on the local companion (d365fo-local), which reads the ` +
-      `files on the dev VM.`;
+      `files on the dev VM.` +
+      (known.length
+        ? `\n\nThe index knows these extensions of menu "${baseMenu}" (names only, not their entries):\n` +
+          known.map(k => `- ${k.name} (model ${k.model})`).join('\n')
+        : '');
   }
   return `${what} not found — not in the index, the configured model or any package folder.`;
 }
@@ -161,7 +170,7 @@ export async function menuInfoTool(request: CallToolRequest, context: XppServerC
     const xml = await readMenuXml(args.name, context.symbolIndex);
     if (!xml) {
       return {
-        content: [{ type: 'text', text: unreadable(`Menu "${args.name}"`) }],
+        content: [{ type: 'text', text: unreadable(`Menu "${args.name}"`, args.name, context.symbolIndex) }],
         isError: true,
       };
     }
@@ -215,9 +224,9 @@ export async function menuExtensionInfoTool(request: CallToolRequest, context: X
     if (shown.length === 0) {
       return {
         content: [{ type: 'text', text: single
-          ? unreadable(`Menu extension "${args.name}"`)
+          ? unreadable(`Menu extension "${args.name}"`, asGiven, context.symbolIndex)
           : SERVER_MODE === 'read-only'
-            ? unreadable(`The extensions of menu "${asGiven}"`)
+            ? unreadable(`The entries of the extensions of menu "${asGiven}"`, asGiven, context.symbolIndex)
             : `No extension of menu "${asGiven}" found — not in the index, the configured model or any package folder.` }],
         isError: true,
       };

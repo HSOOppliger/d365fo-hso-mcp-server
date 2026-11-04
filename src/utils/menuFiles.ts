@@ -52,3 +52,20 @@ export async function readMenuExtensions(
   const xmls = await Promise.all(files.map(f => fs.readFile(f, 'utf-8').catch(() => null)));
   return files.flatMap((f, i) => (xmls[i] ? [{ name: path.basename(f, '.xml'), xml: xmls[i]! }] : []));
 }
+
+/**
+ * The extensions of `baseMenu` the index knows — name and model — without reading a
+ * file. A read-only server has the index rows but none of the files, so this is all
+ * it can say about them; empty when there is no index.
+ */
+export function indexedMenuExtensions(baseMenu: string, symbolIndex: any): Array<{ name: string; model: string }> {
+  try {
+    const rows = symbolIndex.getReadDb()
+      .prepare(`SELECT DISTINCT name, model FROM symbols WHERE type = 'menu-extension' AND name LIKE ? ORDER BY name`)
+      .all(`${baseMenu}.%`) as Array<{ name: string; model: string }>;
+    const prefix = `${baseMenu.toLowerCase()}.`;
+    return rows.filter(r => r.name.toLowerCase().startsWith(prefix));
+  } catch {
+    return [];
+  }
+}
