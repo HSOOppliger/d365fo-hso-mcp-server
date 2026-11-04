@@ -1,6 +1,6 @@
 # feat(menu): add-submenu, and items into a submenu of a menu
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.14`. PR branch `feat/menu-submenus` = one commit `21cf2c45` on upstream `main` `acd9d8e1` (rebased after #1198 was merged; only the moved JSDoc of `directXmlAddMenuItemToMenuExtension` from #1198's follow-up commit conflicted); not yet filed. The test counts below are for the PR branch (`d365dev`: 532 files, 7,775 tests).*
+*Upstream pull request [#1199](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1199) for dynamics365ninja/d365fo-mcp-server, filed from branch `feat/menu-submenus` (one commit `21cf2c45` on upstream `main` `acd9d8e1`, rebased after #1198 was merged; only the moved JSDoc of `directXmlAddMenuItemToMenuExtension` from #1198's follow-up commit conflicted). On `d365dev` this is `v1.22.0-d365dev.14`. The text below is the PR description as filed. The test counts below are for the PR branch (`d365dev`: 532 files, 7,775 tests).*
 
 **Follows #1198** (`add-menu-item-to-menu` on a menu extension) and builds on its `src/tools/xml/menuExtensionXml.ts`.
 

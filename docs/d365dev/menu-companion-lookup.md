@@ -1,8 +1,8 @@
 # fix(menu): menu checks read the other extensions of the base menu on a write-only companion
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.15`. PR branch `feat/menu-companion-lookup` = one commit `f6ebbdcb` on top of the add-submenu branch (`21cf2c45`, on upstream `main` `acd9d8e1`). After #1198 was merged with the maintainer's commit `d52c63ca` (a standard base menu read from every package folder), this change was narrowed to the other extensions of the base menu, and it now shares that commit's package scan instead of adding a second one. Not yet filed. The test counts below are for the PR branch (`d365dev`: 533 files, 7,783 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server, to follow #1199 (add-submenu). On `d365dev` this is `v1.22.0-d365dev.15`. PR branch `feat/menu-companion-lookup` = one commit `f6ebbdcb` on top of the add-submenu branch (`21cf2c45`, on upstream `main` `acd9d8e1`). After #1198 was merged with the maintainer's commit `d52c63ca` (a standard base menu read from every package folder), this change was narrowed to the other extensions of the base menu, and it now shares that commit's package scan instead of adding a second one. Not yet filed. The test counts below are for the PR branch (`d365dev`: 533 files, 7,783 tests).*
 
-**Depends on the add-submenu PR:** it changes `otherExtensionSubmenus`, which `checkExtensionParent` and `directXmlAddSubmenu` from that PR call. Review the last commit only; the branch is rebased onto `main` once it is merged.
+**Depends on #1199 (add-submenu):** it changes `otherExtensionSubmenus`, which `checkExtensionParent` and `directXmlAddSubmenu` from that PR call. Review the last commit only; the branch is rebased onto `main` once it is merged.
 
 ## The defect
 

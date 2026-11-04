@@ -2,7 +2,7 @@
 
 *Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.16` plus `.17` and `.18` (the answer on a read-only server, with the extensions the index knows) and `.19` (extensions the index knows but whose file was not read). PR branch `feat/menu-reader` = one commit `a6c6f35d` on top of the companion-lookup branch (`f6ebbdcb` → add-submenu `21cf2c45`, on upstream `main` `acd9d8e1`, after #1198 was merged); not yet filed. The test counts below are for the PR branch (`d365dev`: 535 files, 7,801 tests).*
 
-**Depends on the add-submenu PR and the companion-lookup PR:** it uses `findAotFilesInAllPackages` from the last and moves its sibling-extension lookup into a shared util. Review the last commit only; the branch is rebased onto `main` as the others are merged.
+**Depends on #1199 (add-submenu) and the companion-lookup PR:** it uses `findAotFilesInAllPackages` from the last and moves its sibling-extension lookup into a shared util. Review the last commit only; the branch is rebased onto `main` as the others are merged.
 
 ## The gap
 
