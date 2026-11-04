@@ -439,7 +439,7 @@ async function checkExtensionParent(
     return {
       refusal:
         `Submenu '${parent}' is not in menu '${baseMenu}', nor added by ${extensionName} or another extension ` +
-        `of it in the index — nothing was written. A <Parent> naming no submenu fails the build.\n` +
+        `of it — nothing was written. A <Parent> naming no submenu fails the build.\n` +
         `   Submenus: ${known.length ? known.map(fromXmlText).join(', ') : '(none — omit parentMenuElement for the top level)'}`,
     };
   }

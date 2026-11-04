@@ -1,6 +1,6 @@
 # fix(menu): menu checks find the base menu on a write-only companion
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.15`. PR branch `feat/menu-companion-lookup` = one commit `12e55922` on top of the add-submenu branch (`be1066fb`, itself on #1198's `ba854436`, on upstream `main` `a9094731`); not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 533 files, 7,783 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.15`. PR branch `feat/menu-companion-lookup` = one commit `6e319943` on top of the add-submenu branch (`be1066fb`, itself on #1198's `ba854436`, on upstream `main` `a9094731`); not yet pushed or filed. The test counts below are for the PR branch (`d365dev`: 533 files, 7,783 tests).*
 
 **Depends on #1198 and the add-submenu PR:** it changes `checkExtensionParent` and `directXmlAddSubmenu` from the latter. Review the last commit only; the branch is rebased onto `main` once both are merged.
 
@@ -35,7 +35,7 @@ So on the companion both checks never saw the base menu: every parent went throu
 - `readBaseMenu`: `findBaseObjectXml` as before, then `<root>/*/*/AxMenu/<BaseMenu>.xml`. Both wrappers use it.
 - `otherExtensionSubmenus`: the index as before; when it yields no extension of the base menu, the package folders (`AxMenuExtension/<BaseMenu>.*.xml`, the extension itself excluded). The `.xml` at the end matters: a modify outside git leaves `<file>.xml.backup-<time>` next to the file, which would otherwise be read as one more extension.
 
-A server with an index behaves as before; the package folders are only read when the index has nothing. The "NOT checked" warning stays for a base menu that is found nowhere.
+A server with an index behaves as before; the package folders are only read when the index has nothing. The "NOT checked" warning stays for a base menu that is found nowhere. The parent refusal no longer says "another extension of it in the index", since those now come from the package folders as well.
 
 ## Tests
 
@@ -54,6 +54,12 @@ A server with an index behaves as before; the package folders are only read when
 The writer tests mock the helper by default, so they do not depend on what the test machine has under its packages path.
 
 Against the `src/` of the add-submenu PR: the 3 helper tests and the 5 writer tests fail.
+
+**On a dev VM** (LCS, the write-only companion on this change), against an extension of `OrganizationAdministration`, each sent as an explicit tool call:
+- `add-submenu` `EInvoice` under `Periodic`: refused ("already exists in menu 'OrganizationAdministration'"), nothing written — before this change it was written and the build failed;
+- `add-menu-item-to-menu` under `Reportzz`: refused with the base menu's submenus (`Workspaces, NumberSequences, …`);
+- the same under `EInvoice`: written, without the "NOT checked" warning;
+- no noticeable delay from reading the package folders.
 
 ## Checks
 
