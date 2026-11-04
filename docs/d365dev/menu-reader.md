@@ -72,6 +72,12 @@ Against the `src/` of the companion-lookup PR: `menuInfo.test.ts` fails to load.
 
 In each case the agent asked the shared server first, got the "cannot be read on this server … d365fo-local" answer, and read the menu on the companion. It no longer searched the file system. Before the read-only answer, the shared server said "not found" with its search guidance, and the agent set out to grep PackagesLocalDirectory instead.
 
+Then the partial reads, each asked in a new conversation:
+- **Which extensions a menu has.** The shared server listed the custom extensions with their entries under `(N of M read)`, with Microsoft's under "Not read". The companion answered the same question with M, so the counts agreed. The agent no longer took the shared server's list as complete. Before this change, the heading said "(N)" alone and the agent took that as the whole list.
+- **One of Microsoft's extensions by name.** The shared server answered "cannot be read on this server: it has no copy of the file", and the agent read the extension on the companion.
+- **The base menu's submenus.** The shared server could not read the menu; the companion returned the tree, with no "Not read" line, since it has no index.
+- **A custom extension by name.** The agent called `search` on the shared server rather than `get_object_info`, then read the extension on the companion. The answer was right, with one extra call.
+
 Rendered against the shipped files (outside the suite): `OrganizationAdministration` (33 submenus, 150 elements) with both of its extensions, and `OrganizationAdministration.ApplicationSuite_Extension` on its own, read as expected.
 
 ## Checks
