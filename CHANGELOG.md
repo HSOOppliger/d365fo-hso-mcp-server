@@ -171,6 +171,12 @@ those are called out explicitly below.
   `…/AxMenuExtension`, under the packages path and on UDE the custom and Microsoft
   packages paths); the package/model folder list is taken once per process. Backup copies
   a modify leaves next to a file (`….xml.backup-…`) are not read as extensions.
+- **`search` put an extension's base object in front of its name.** The exact-match line
+  prefixes the owner to tell same-named members apart, and an extension's index row
+  carries its base object as owner, so a menu extension read
+  `OrganizationAdministration.OrganizationAdministration.ContosoExtension` and a class
+  extension `SalesTable.SalesTableContoso_Extension`, as if it were a member of
+  `SalesTable`. Extensions are now named alone, with their type; members keep the owner.
 - **KW001 missed the later names of a declaration list and sized-string
   parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
   class showed xppc rejecting both ("'identifier' expected", "invalid name for a
