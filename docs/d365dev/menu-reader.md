@@ -1,8 +1,8 @@
 # feat(menu): get_object_info reads menus and menu extensions
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.22.0-d365dev.16` plus `.17` and `.18` (the answer on a read-only server, with the extensions the index knows) and `.19` (extensions the index knows but whose file was not read). PR branch `feat/menu-reader` = one commit `a6c6f35d` on top of the companion-lookup branch (`f6ebbdcb` → add-submenu `21cf2c45`, on upstream `main` `acd9d8e1`, after #1198 was merged); not yet filed. The test counts below are for the PR branch (`d365dev`: 535 files, 7,801 tests).*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.23.0-d365dev.2` (in the v1.22.0 cycle `v1.22.0-d365dev.16` to `.19`). PR branch `feat/menu-reader` = one commit `5a9e430d` on top of the companion-lookup branch (#1203, `6ce3f7dc` on `v1.23.0`); not yet filed. The test counts below are for the PR branch, which has the same code as `d365dev`.*
 
-**Depends on #1199 (add-submenu) and the companion-lookup PR:** it uses `findAotFilesInAllPackages` from the last and moves its sibling-extension lookup into a shared util. Review the last commit only; the branch is rebased onto `main` as the others are merged.
+**Depends on #1203** (companion lookup): it uses `findAotFilesInAllPackages` from it and moves its sibling-extension lookup (`otherExtensionXmls`) into a shared util. Review the last commit only; the branch is rebased onto `main` once #1203 is merged.
 
 ## The gap
 
@@ -33,7 +33,7 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 - When nothing can be read, both readers say so and point to the local companion (`get_object_info` on `d365fo-local`). The wording avoids "not found", so `get_object_info` does not append its `search` / `update_symbol_index` guidance — which on a dev VM sent the agent looking for an object that exists. What the index does know there is which extensions a menu has (the full build indexes menu extensions by name), so the answer lists them with their model (`indexedMenuExtensions` in `menuFiles.ts`): "which extensions does Organization administration have?" is answered by the shared server itself.
 - When only some extensions can be read, the readers count the rest in the heading (`# Extensions of menu … (5 of 7 read)`) and list them by name and model above the rendered ones, on a read-only server with the pointer to the companion. Without that, on a dev VM the shared server answered "Extensions of menu `OrganizationAdministration` (5)" with the custom extensions only, Microsoft's left out without a word, and the agent took it as the whole list.
 
-**Lookup** (`src/utils/menuFiles.ts`, new): `readMenuXml` (`findBaseObjectXml`, which looks in every package folder for a menu since #1198) and `readMenuExtensions` (index, configured model, then every package folder through the companion-lookup PR's `findAotFilesInAllPackages`), so a write-only companion reads standard menus and their extensions. The menu-extension writers' `otherExtensionSubmenus` lookup moved there unchanged, and both writers and readers use it.
+**Lookup** (`src/utils/menuFiles.ts`, new): `readMenuXml` (`findBaseObjectXml`, which looks in every package folder for a menu since #1198) and `readMenuExtensions` (index, configured model, then every package folder through the companion-lookup PR's `findAotFilesInAllPackages`), so a write-only companion reads standard menus and their extensions. The menu-extension writers' sibling lookup (`otherExtensionXmls`, from #1203) moved there unchanged, and both writers and readers use it.
 
 **`{"include": "xml"}`** for `menu` and `menu-extension` falls back to the index without a model filter and then the package folders, so the raw XML of a standard menu is readable on the companion too.
 
@@ -62,7 +62,7 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 
 The writer tests (`menuExtensionXml.test.ts`) pass unchanged on the moved lookup.
 
-Against the `src/` of the companion-lookup PR: `menuInfo.test.ts` fails to load.
+Against the `src/` of #1203: `menuInfo.test.ts` fails to load.
 
 **On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared read-only server), asked in plain words without naming a server:
 - the submenus of Organization administration;
@@ -82,7 +82,7 @@ Rendered against the shipped files (outside the suite): `OrganizationAdministrat
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (539 test files passed, 2 skipped; 7839 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (540 test files passed, 2 skipped; 7853 tests passed, 30 skipped).
 
 ## Checklist
 
