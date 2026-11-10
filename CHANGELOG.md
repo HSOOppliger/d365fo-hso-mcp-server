@@ -200,7 +200,9 @@ those are called out explicitly below.
   dropped onto a form in Visual Studio as a reference group now gets one too: an Int64 field
   whose EDT derives from RefRecId and that relates to RecId of a table with a replacement key
   (e.g. `SalesTable.WorkerSalesTaker` → `HcmWorker`), through a table relation (also one
-  in a table extension) or the EDT's `ReferenceTable`. The reply says why. When the related
+  in a table extension) or the EDT's `ReferenceTable`. The tables and EDTs are read from
+  every package folder when the index has no path to them, so this works on a write-only
+  companion too. The reply says why. When the related
   table has no replacement key the field stays an Int64 control, and the reply says how to
   ask for a reference group anyway. An explicit `controlType` always wins (`Int64` for a
   plain control). Set `ReplacementFieldGroup` afterwards with `modify-property`.

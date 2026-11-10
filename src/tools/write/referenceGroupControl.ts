@@ -32,6 +32,22 @@ const isReferenceGroup = (controlType: string | undefined): boolean =>
 /** An EDT chain can be deep (SalesTaker → HcmWorkerRecId → RefRecId); a cycle must not hang the call. */
 const MAX_EDT_DEPTH = 12;
 
+const AOT_FOLDERS: Record<string, string> = { form: 'AxForm', table: 'AxTable', edt: 'AxEdt' };
+
+/**
+ * findBaseObjectXml, else every package folder. A write-only companion has no index,
+ * and findBaseObjectXml then looks in the configured model only, so SalesTable,
+ * SalesTaker and HcmWorker were never found there — on the server where add-control
+ * runs in a hybrid setup. Same fallback findBaseObjectXml uses for menus.
+ */
+async function readObjectXml(objectType: string, name: string, symbolIndex: unknown): Promise<string | null> {
+  const found = await findBaseObjectXml(objectType, name, symbolIndex).catch(() => null);
+  if (found) return found;
+  const fileName = `${name.toLowerCase()}.xml`;
+  const [file] = await findAotFilesInAllPackages(AOT_FOLDERS[objectType], n => n.toLowerCase() === fileName).catch(() => []);
+  return file ? fs.readFile(file, 'utf-8').catch(() => null) : null;
+}
+
 interface SurrogateForeignKey {
   table: string;
   field: string;
@@ -95,7 +111,7 @@ async function surrogateForeignKey(
   let edt: string | undefined = field.edt;
   for (let depth = 0; edt && depth < MAX_EDT_DEPTH; depth++) {
     if (['refrecid', 'recid'].includes(edt.toLowerCase())) { reachesRefRecId = true; break; }
-    const xml = await findBaseObjectXml('edt', edt, symbolIndex).catch(() => null);
+    const xml = await readObjectXml('edt', edt, symbolIndex);
     if (!xml) break;
     const links = edtLinks(xml);
     if (links.referenceTable && !referenceTable) referenceTable = { edt, table: links.referenceTable };
@@ -107,7 +123,7 @@ async function surrogateForeignKey(
   const relation = [owner, ...tableXmls].map(x => recIdRelation(x, fieldName)).find(Boolean) ?? null;
   const relatedTable = relation?.relatedTable ?? referenceTable?.table;
   if (!relatedTable) return null;
-  const relatedXml = await findBaseObjectXml('table', relatedTable, symbolIndex).catch(() => null);
+  const relatedXml = await readObjectXml('table', relatedTable, symbolIndex);
   return {
     table,
     field: fieldName,
@@ -128,7 +144,7 @@ async function dataSourceTable(
 ): Promise<string> {
   const xmls = [await fs.readFile(filePath, 'utf-8').catch(() => '')];
   if (objectType === 'form-extension') {
-    xmls.push(await findBaseObjectXml('form', objectName.split('.')[0], symbolIndex).catch(() => null) ?? '');
+    xmls.push(await readObjectXml('form', objectName.split('.')[0], symbolIndex) ?? '');
   }
   for (const xml of xmls) {
     const table = formDataSourceTables(xml).get(dataSource.toLowerCase());
@@ -139,7 +155,7 @@ async function dataSourceTable(
 
 /** The table's XML, then its extensions' (a custom field lives in one): from the index, else the package folders. */
 async function tableAndExtensionXmls(table: string, symbolIndex: any): Promise<string[]> {
-  const base = await findBaseObjectXml('table', table, symbolIndex).catch(() => null);
+  const base = await readObjectXml('table', table, symbolIndex);
   const prefix = `${table.toLowerCase()}.`;
   let names: string[] = [];
   try {

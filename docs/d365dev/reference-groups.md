@@ -46,7 +46,7 @@ Why that rule: the designer's rule is not documented. Microsoft Learn ("Data ent
 
 The first row is the rule. The second is left to the caller: most shipped forms use a reference group there too, but not all.
 
-The data source's table comes from the form (for an extension, from the base form and the data sources the extension adds), else the data source's name. Tables, EDTs and the related table are read with `findBaseObjectXml`; table extensions come from the index, else the package folders (`findAotFilesInAllPackages`). The replacement key is not in the index, so the related table's XML is read. A failed lookup leaves the old choice in place.
+The data source's table comes from the form (for an extension, from the base form and the data sources the extension adds), else the data source's name. The base form, the tables, the EDTs and the related table are read with `findBaseObjectXml`, else from every package folder (`findAotFilesInAllPackages`, as `findBaseObjectXml` does for menus); table extensions come from the index, else the package folders. The package-folder step is what makes it work on a write-only companion: it has no index, so `findBaseObjectXml` looks in the configured model only, and on a dev VM the first version of this change found none of `SalesTable`, `SalesTaker` or `HcmWorker` there and kept writing a String control. The replacement key is not in the index, so the related table's XML is read. A failed lookup leaves the old choice in place.
 
 **An unknown type is refused.** On a form extension, a `controlType` the caller named that the writer cannot produce (`SegmentedEntry`, `Grid`, …) is refused with the supported list, and nothing is written. A type picked from the field's EDT still falls back to String, as before. The plain-form path is unchanged: the bridge already throws on an unknown type.
 
@@ -54,16 +54,16 @@ The logic is in `write/referenceGroupControl.ts` (I/O) and `xml/surrogateForeign
 
 ## Out of scope / follow-ups
 
-- A write-only companion without an index finds a standard table only in the configured model (`findBaseObjectXml` scans every package for menus only), so there a standard table's field gets the old choice.
+- On a write-only companion an Int64 field that is not a surrogate foreign key still gets a String control: without an index, `resolveControlTypeForField` guesses from the field's name. That predates this change.
 - `generate_object` form scaffolds and `create` do not use the rule.
 
 ## Tests
 
 - `tests/tools/surrogateForeignKey.test.ts` (new): a field's type and EDT in any casing, the RecId relation (a natural-key relation is not one), an EDT's links, a table's replacement key, a form's data source tables.
 - `tests/utils/formExtensionControlXml.test.ts`: a reference group in both extension shapes, in the census order with no element-order violation, and the note when it is bound to no field.
-- `tests/tools/referenceGroupControl.test.ts` (new), through `modifyD365FileTool`: on a form extension, a surrogate foreign key becomes a reference group, found in the table, in a table extension, and through the EDT's `ReferenceTable`; no replacement key gives Int64 with the note; an Int64 EDT that does not derive from RefRecId is left alone; an explicit `Int64` and an explicit `ReferenceGroup` win; an unknown type is refused and the file is unchanged. On a plain form: the bridge gets `ReferenceGroup` without the `DataField` and `ReferenceField` is written after it; a binding that cannot be written is a warning on a success; other types keep their `DataField`.
+- `tests/tools/referenceGroupControl.test.ts` (new), through `modifyD365FileTool`: on a form extension, a surrogate foreign key becomes a reference group, found in the table, in a table extension, and through the EDT's `ReferenceTable`; no replacement key gives Int64 with the note; an Int64 EDT that does not derive from RefRecId is left alone; an explicit `Int64` and an explicit `ReferenceGroup` win; an unknown type is refused and the file is unchanged; without an index (a write-only companion) the base form, table, EDTs, related table and a table extension are found in the package folders. On a plain form: the bridge gets `ReferenceGroup` without the `DataField` and `ReferenceField` is written after it; a binding that cannot be written is a warning on a success; other types keep their `DataField`.
 
-Without the writer changes, 8 of these fail.
+Without the writer changes, 8 of these fail; without the package-folder step, the 2 companion tests fail.
 
 **Not tested on a dev VM yet.**
 

@@ -18,7 +18,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const { mockBridgeAddControl, store } = vi.hoisted(() => ({
   mockBridgeAddControl: vi.fn(),
-  store: { files: new Map<string, string>(), extensionRows: [] as Array<{ name: string }> },
+  store: { files: new Map<string, string>(), extensionRows: [] as Array<{ name: string }>, noIndex: false },
 }));
 
 vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
@@ -119,6 +119,9 @@ const BASE_FORM = [
   `</AxForm>`,
 ].join('\n');
 
+// The base form is in the package folders too; data source SalesTableDs is not named after its table.
+METADATA['form:salestable'] = BASE_FORM;
+
 const EXTENSION = [
   `<?xml version="1.0" encoding="utf-8"?>`,
   `<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">`,
@@ -130,16 +133,39 @@ const EXTENSION = [
   `</AxFormExtension>`,
 ].join('\n');
 
+// store.noIndex: a write-only companion, where findBaseObjectXml finds no standard object.
 vi.mock('../../src/utils/baseObjectXml', () => ({
-  findBaseFormXml: vi.fn(async (name: string) => (name.toLowerCase() === 'salestable' ? BASE_FORM : null)),
-  findBaseObjectXml: vi.fn(async (type: string, name: string) =>
-    type === 'form' && name.toLowerCase() === 'salestable' ? BASE_FORM : METADATA[`${type}:${name.toLowerCase()}`] ?? null),
+  findBaseFormXml: vi.fn(async (name: string) => (!store.noIndex && name.toLowerCase() === 'salestable' ? BASE_FORM : null)),
+  findBaseObjectXml: vi.fn(async (type: string, name: string) => {
+    if (store.noIndex) return null;
+    return type === 'form' && name.toLowerCase() === 'salestable' ? BASE_FORM : METADATA[`${type}:${name.toLowerCase()}`] ?? null;
+  }),
+}));
+
+const AOT_FOLDER_TYPES: Record<string, string> = { AxForm: 'form', AxTable: 'table', AxEdt: 'edt', AxTableExtension: 'table-extension' };
+
+/** The package folders, as the companion sees them: every METADATA object under its Ax* folder. */
+vi.mock('../../src/utils/objectFileLookup', async (orig) => ({
+  ...(await orig<typeof import('../../src/utils/objectFileLookup')>()),
+  findAotFilesInAllPackages: vi.fn(async (folder: string, match: (fileName: string) => boolean) => {
+    const type = AOT_FOLDER_TYPES[folder];
+    return Object.keys(METADATA)
+      .filter(k => k.startsWith(`${type}:`))
+      .map(k => `${METADATA[k].match(/<Name>([^<]+)<\/Name>/)![1]}.xml`)
+      .filter(match)
+      .map(f => `K:\\PackagesLocalDirectory\\ApplicationSuite\\Foundation\\${folder}\\${f}`);
+  }),
 }));
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
     const file = store.files.get(String(p));
     if (file !== undefined) return file;
+    const inPackage = /\\(AxForm|AxTable|AxEdt|AxTableExtension)\\([^\\]+)\.xml$/.exec(String(p));
+    if (inPackage) {
+      const content = METADATA[`${AOT_FOLDER_TYPES[inPackage[1]]}:${inPackage[2].toLowerCase()}`];
+      if (content) return content;
+    }
     if (String(p).endsWith('.rnrproj')) return `<Project><ItemGroup></ItemGroup></Project>`;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
@@ -248,6 +274,7 @@ describe('add-control on a form extension: reference groups', () => {
     mockBridgeAddControl.mockReset();
     store.files = new Map([[EXT_PATH, EXTENSION]]);
     store.extensionRows = [{ name: 'SalesTable.ContosoExt' }];
+    store.noIndex = false;
     ctx = buildContext();
   });
 
@@ -299,6 +326,24 @@ describe('add-control on a form extension: reference groups', () => {
     expect(r.isError).toBeFalsy();
     expect(ext()).toContain('i:type="AxFormReferenceGroupControl"');
     expect(ext()).toContain('<ReferenceField>ContosoNoKeyRef</ReferenceField>');
+  });
+
+  it('finds the standard table, EDTs and related table in the package folders on a companion without an index', async () => {
+    // The VM run: d365fo-local has no index, so findBaseObjectXml found none of them and
+    // WorkerSalesTaker came out as a String control with no word about why.
+    store.noIndex = true;
+    store.extensionRows = [];
+    const r = await modifyD365FileTool(addControl({ controlDataField: 'WorkerSalesTaker' }), ctx);
+    expect(text(r)).toContain('🔗 controlType "ReferenceGroup": SalesTable.WorkerSalesTaker is a surrogate foreign key to HcmWorker');
+    expect(text(r)).toContain('replacement key HcmWorker_AK2');
+    expect(ext()).toContain('<ReferenceField>WorkerSalesTaker</ReferenceField>');
+  });
+
+  it('finds a table extension\'s field in the package folders on a companion without an index', async () => {
+    store.noIndex = true;
+    store.extensionRows = [];
+    const r = await modifyD365FileTool(addControl({ controlDataField: 'ContosoApprover' }), ctx);
+    expect(text(r)).toContain('SalesTable.ContosoApprover is a surrogate foreign key to HcmWorker');
   });
 
   it('refuses a controlType it cannot write instead of writing a String control', async () => {
