@@ -1,6 +1,6 @@
 # feat(menu): get_object_info reads menus and menu extensions
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.23.0-d365dev.2` (in the v1.22.0 cycle `v1.22.0-d365dev.16` to `.19`). PR branch `feat/menu-reader` = one commit `bba44fb2` on `main` (`289cfc30`, after #1203 and #1207); not yet filed. The test counts below are for the PR branch, which has the same code as `d365dev`. The PR body is everything from the next paragraph down.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. Filed as #1224 on 2026-11-10. On `d365dev` this is `b087bad0`, on `main` `20e67298` (tag `v1.23.0-d365dev.4`; before that `v1.23.0-d365dev.2`, and in the v1.22.0 cycle `v1.22.0-d365dev.16` to `.19`). PR branch `feat/menu-reader` = one commit `bba44fb2` on `main` (`289cfc30`, after #1203 and #1207). The test counts below are for the PR branch, which has the same code as `d365dev`. The PR body is everything from the next paragraph down.*
 
 Follows #1203 (companion lookup, merged): it uses `findAotFilesInAllPackages` from it, including the fix for linked package folders, and moves its sibling-extension lookup (`otherExtensionXmls`) into a shared util.
 

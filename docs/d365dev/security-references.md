@@ -1,6 +1,6 @@
 # feat(security): add and remove duty and privilege references on roles, duties and their extensions
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `116d11ef` (tag `v1.23.0-d365dev.3`). PR branch `feat/security-references` = the same commit on `main` (`v1.23.0`, `2bc52137`) as `5bff6489`, without this file. The PR body is everything from "The gap" down. Merged as #1207 on 2026-11-10. It uses nothing from #1203 or the menu reader. The test counts below are for the PR branch.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this was `116d11ef` (tag `v1.23.0-d365dev.3`); since `v1.23.0-d365dev.4` it comes from upstream `main`. PR branch `feat/security-references` = the same commit on `main` (`v1.23.0`, `2bc52137`) as `5bff6489`, without this file. The PR body is everything from "The gap" down. Merged as #1207 on 2026-11-10. It uses nothing from #1203 or the menu reader. The test counts below are for the PR branch.*
 
 ## The gap
 
