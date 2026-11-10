@@ -1,6 +1,6 @@
 # feat(form): add-control writes reference groups, and picks one for a surrogate foreign key
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is the commit after `c5bd5ca0`; no tag yet. PR branch `feat/reference-groups` = the same commit on `main` (`06f363ad`), without this file; not yet filed. The PR body is everything from "The gap" down.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `55c14e96` (tag `v1.23.0-d365dev.6`) plus the companion fix `b7afc8fa`. PR branch `feat/reference-groups` = both as one commit `cec4f474` on `main` (`06f363ad`), without this file; not yet filed. The PR body is everything from "The gap" down.*
 
 ## The gap
 
@@ -69,7 +69,7 @@ Without the writer changes, 8 of these fail; without the package-folder step, th
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (567 test files passed, 2 skipped; 8433 tests passed, 32 skipped); payload 45,072, as on `main`.
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (567 test files passed, 2 skipped; 8435 tests passed, 32 skipped); payload 45,072, as on `main`.
 
 ## Checklist
 
