@@ -1,8 +1,8 @@
 # feat(menu): get_object_info reads menus and menu extensions
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.23.0-d365dev.2` (in the v1.22.0 cycle `v1.22.0-d365dev.16` to `.19`). PR branch `feat/menu-reader` = one commit `5a9e430d` on top of the companion-lookup branch (#1203, `6ce3f7dc` on `v1.23.0`); not yet filed. The test counts below are for the PR branch, which has the same code as `d365dev`.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `v1.23.0-d365dev.2` (in the v1.22.0 cycle `v1.22.0-d365dev.16` to `.19`). PR branch `feat/menu-reader` = one commit `bba44fb2` on `main` (`289cfc30`, after #1203 and #1207); not yet filed. The test counts below are for the PR branch, which has the same code as `d365dev`. The PR body is everything from the next paragraph down.*
 
-**Depends on #1203** (companion lookup): it uses `findAotFilesInAllPackages` from it and moves its sibling-extension lookup (`otherExtensionXmls`) into a shared util. Review the last commit only; the branch is rebased onto `main` once #1203 is merged.
+Follows #1203 (companion lookup, merged): it uses `findAotFilesInAllPackages` from it, including the fix for linked package folders, and moves its sibling-extension lookup (`otherExtensionXmls`) into a shared util.
 
 ## The gap
 
@@ -39,7 +39,7 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 
 **Registration:** `OBJECT_INFO_TYPES` and `READER_DISPATCH` (`objectInfoRegistry.ts`), the objectType descriptions (`getObjectInfo.ts`, the tool schema, `index.ts`), `docs/MCP_TOOLS.md`.
 
-**Schema budget:** the two enum values are paid for in `get_object_info`'s description, which no longer spells out the six `*-extension` types its own enum lists ("The *-extension types list all extensions of a base object"). Measured payload 45,090 → 45,038; the budget test records it.
+**Schema budget:** the two enum values are paid for in `get_object_info`'s description, which no longer spells out the six `*-extension` types its own enum lists ("The *-extension types list all extensions of a base object"). Measured on `main` 45,070 → 45,018 (re-measured after #1207, which merged first); the budget test records it.
 
 ## Out of scope / follow-ups
 
@@ -62,7 +62,7 @@ Output beyond 400 lines is cut with a pointer to `submenusOnly` or a single exte
 
 The writer tests (`menuExtensionXml.test.ts`) pass unchanged on the moved lookup.
 
-Against the `src/` of #1203: `menuInfo.test.ts` fails to load.
+Against the `src/` of `main`: `menuInfo.test.ts` fails to load.
 
 **On a dev VM** (LCS, Claude Code, this change on the write-only companion and on the shared read-only server), asked in plain words without naming a server:
 - the submenus of Organization administration;
@@ -82,7 +82,7 @@ Rendered against the shipped files (outside the suite): `OrganizationAdministrat
 
 ## Checks
 
-- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (540 test files passed, 2 skipped; 7853 tests passed, 30 skipped).
+- `npm ci && npm run build && npm run typecheck && npm run lint && npm run test:run` on this branch: green (555 test files passed, 2 skipped; 8160 tests passed, 32 skipped).
 
 ## Checklist
 
