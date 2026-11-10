@@ -65,7 +65,7 @@ The logic is in `write/referenceGroupControl.ts` (I/O) and `xml/surrogateForeign
 
 Without the writer changes, 8 of these fail; without the package-folder step, the 2 companion tests fail.
 
-**Not tested on a dev VM yet.**
+**Tested on a dev VM** (LCS, Claude Code, the write-only companion `d365fo-local`, which has no index). The first version wrote a String control for `SalesTable.WorkerSalesTaker` there, because it found none of the standard objects; with the package-folder step, `add-control` without a `controlType` wrote an `AxFormReferenceGroupControl` (`<Controls />`, `<DataSource>SalesTable</DataSource>`, `<ReferenceField>WorkerSalesTaker</ReferenceField>`) into a form extension, with the 🔗 note naming `WorkerSalesTaker_FK` and `HcmWorker_AK2`, and the same on a plain form through the bridge, followed by the `ReferenceField` write. An explicit `controlType="Int64"` gave an Int64 control, `controlType="SegmentedEntry"` was refused with nothing written, a String field stayed String, `ReplacementFieldGroup` was set with `modify-property`, and the form extension and the form built.
 
 ## Checks
 
@@ -77,6 +77,6 @@ Without the writer changes, 8 of these fail; without the package-folder step, th
 - [x] CHANGELOG `[Unreleased]` → Added and Fixed.
 - [x] Tool schema payload unchanged.
 - [x] No settings, DB schema or parser change.
-- [ ] Tested on a dev VM.
+- [x] Tested on a dev VM.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
