@@ -190,6 +190,20 @@ those are called out explicitly below.
   advice. Extensions the index knows but whose file was not read are counted in the
   heading ("5 of 7 read") and listed by name and model above the rendered ones, so a
   partial list does not read as the whole one.
+- **`add-control` writes reference groups, and picks one for a surrogate foreign key as the
+  form designer does.** `controlType="ReferenceGroup"` was not supported: on a form
+  extension it came out as a String control (see Fixed). It now writes an
+  `AxFormReferenceGroupControl` bound the way Visual Studio saves one: `<DataSource>`, the
+  field from `controlDataField` as `<ReferenceField>` (a reference group has no
+  `DataField`), and an empty `<Controls />`. On a plain form the bridge creates the control
+  and `ReferenceField` is then written into the saved file. Without a `controlType`, a field
+  dropped onto a form in Visual Studio as a reference group now gets one too: an Int64 field
+  whose EDT derives from RefRecId and that relates to RecId of a table with a replacement key
+  (e.g. `SalesTable.WorkerSalesTaker` → `HcmWorker`), through a table relation (also one
+  in a table extension) or the EDT's `ReferenceTable`. The reply says why. When the related
+  table has no replacement key the field stays an Int64 control, and the reply says how to
+  ask for a reference group anyway. An explicit `controlType` always wins (`Int64` for a
+  plain control). Set `ReplacementFieldGroup` afterwards with `modify-property`.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
@@ -403,6 +417,11 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **`add-control` on a form extension no longer writes a String control for a type it
+  does not know.** An unknown `controlType` fell back to `AxFormStringControl` and reported
+  success, so a requested reference group became a text box bound to nothing. A type the
+  caller names that the writer cannot produce is now refused, with the supported list, and
+  nothing is written. A type picked from the field's EDT still falls back to String.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
