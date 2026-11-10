@@ -1,6 +1,6 @@
 # feat(form): add-control writes reference groups, and picks one for a surrogate foreign key
 
-*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `55c14e96` (tag `v1.23.0-d365dev.6`) plus the companion fix `b7afc8fa`. PR branch `feat/reference-groups` = both as one commit `cec4f474` on `main` (`06f363ad`), without this file; not yet filed. The PR body is everything from "The gap" down.*
+*Upstream pull request text for dynamics365ninja/d365fo-mcp-server. On `d365dev` this is `55c14e96` (tag `v1.23.0-d365dev.6`) plus the companion fix `b7afc8fa`. PR branch `feat/reference-groups` = both as one commit `cec4f474` on `main` (`06f363ad`), without this file; filed as #1235 on 2026-11-10. The PR body is everything from "The gap" down.*
 
 ## The gap
 
