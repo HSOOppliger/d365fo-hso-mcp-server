@@ -1,6 +1,6 @@
 # fix(get_object_info): answer include:"xml" on a binary ISV object instead of a retry loop
 
-*Upstream pull request [#1273](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1273) for dynamics365ninja/d365fo-mcp-server, filed 2026-11-15 from branch `fix/xml-not-found-binary-isv` (commit `4f9545d0` on upstream `main` `2308d282`, v1.24.0). Not on `d365dev`: it comes in from upstream once merged. The text below is the PR description as prepared; its test counts are for the PR branch.*
+*Upstream pull request [#1273](https://github.com/dynamics365ninja/d365fo-mcp-server/pull/1273) for dynamics365ninja/d365fo-mcp-server, filed 2026-11-15 from branch `fix/xml-not-found-binary-isv` (commit `4f9545d0` on upstream `main` `2308d282`, v1.24.0). On `d365dev` since 2026-11-16 as cherry-pick `6765dc66`; the pick is dropped when `d365dev` is rebased onto the upstream release that contains the merged PR. The text below is the PR description as prepared; its test counts are for the PR branch.*
 
 ## Problem
 
